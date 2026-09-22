@@ -24,7 +24,7 @@ Updates are automatic: each script carries an `@updateURL`, so Tampermonkey pull
 | [`apex-prod-status.user.js`](https://raw.githubusercontent.com/stokovich/prun-scripts/main/apex-prod-status.user.js) | 2.1 | Badge in PROD / XIT PROD: green All OK, or red Check (N) when slots are free | - |
 | [`apex-close-all.user.js`](https://raw.githubusercontent.com/stokovich/prun-scripts/main/apex-close-all.user.js) | 1.0 | Closes all floating buffers: XA button, `XIT XA`, `Ctrl+Shift+X` | - |
 | [`prun-shpt-marquee-select.user.js`](https://raw.githubusercontent.com/stokovich/prun-scripts/main/prun-shpt-marquee-select.user.js) | 2.0.0 | Fixes drag multi-select for SHPT rows in INV / SHPI | - |
-| [`cxpo-cp-price.user.js`](https://raw.githubusercontent.com/stokovich/prun-scripts/main/cxpo-cp-price.user.js) | 1.3 | Shows the corp price (CP) next to the CXPO place-order form | - |
+| [`apex-corp-price.user.js`](https://raw.githubusercontent.com/stokovich/prun-scripts/main/apex-corp-price.user.js) | 3.5 | Shows the corp price (CP) in place order (CXPO), CX material info (CXM), material (MAT) and order book (CXOB) | - |
 
 ## Contract bookmarklet
 
