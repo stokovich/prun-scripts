@@ -4,7 +4,7 @@
 // @version      2.1
 // @updateURL    https://raw.githubusercontent.com/stokovich/prun-scripts/main/apex-prod-status.user.js
 // @downloadURL  https://raw.githubusercontent.com/stokovich/prun-scripts/main/apex-prod-status.user.js
-// @description  Показва "All OK" (всички производствени слотове са заети) или "Check (N)" (има N реда с незаети слотове) в заглавния ред на PROD и XIT PROD буферите в APEX. Обновява се на живо при промяна на данните.
+// @description  Shows "All OK" (every production slot is busy) or "Check (N)" (N rows have free slots) in the header of the PROD and XIT PROD buffers in APEX. Updates live as the data changes.
 // @match        https://apex.prosperousuniverse.com/*
 // @run-at       document-idle
 // @grant        none
@@ -16,8 +16,8 @@
   const VERSION = '2.1';
   document.documentElement.dataset.puProdStatusVersion = VERSION;
 
-  // Слотовете се показват като текст "X / Y" или "X/Y" (заети / общо).
-  // Четем числата директно — надеждно е независимо от цвят/CSS клас.
+  // Slots are rendered as the text "X / Y" or "X/Y" (busy / total).
+  // We read the numbers directly - that is reliable regardless of colour or CSS class.
   const SLOT_RE = /^\s*(\d+)\s*\/\s*(\d+)\s*$/;
   const BADGE_ATTR = 'data-pu-prod-status-badge';
   const FRAME_SEL = '[class*="TileFrame__frame"]';
@@ -29,22 +29,22 @@
     return c ? c.textContent.trim() : '';
   }
 
-  // --- поддържани буфери ---
-  // PROD      : нативен APEX буфер, ред на производствена линия, слот клетки ProductionLines__slots*
-  // XIT PROD  : Refined PrUn (PMMG) буфер, ред на планета (агрегирано), слот клетки rp-FracCell__cell*
+  // --- supported buffers ---
+  // PROD      : native APEX buffer, one row per production line, slot cells ProductionLines__slots*
+  // XIT PROD  : Refined PrUn (PMMG) buffer, one row per planet (aggregated), slot cells rp-FracCell__cell*
   const BUFFERS = [
     {
       name: 'PROD',
       match: f => f.classList.contains('rp-command-PROD'),
       slotSelectors: ['[class*="ProductionLines__slots"]'],
-      // резервен вариант: всеки лист-елемент с текст "X / Y"
+      // fallback: any leaf element with the text "X / Y"
       fallback: f => [...f.querySelectorAll('div,span')]
         .filter(e => e.children.length === 0 && SLOT_RE.test(e.textContent))
     },
     {
       name: 'XIT PROD',
       match: f => f.classList.contains('rp-command-XIT') && /^XIT\s+PROD$/i.test(cmdText(f)),
-      // FracCell е само колоната Slots — така се изключва скритият шаблонен ред "00/00"
+      // FracCell is only the Slots column - this excludes the hidden template row "00/00"
       slotSelectors: ['[class*="FracCell__cell"]', '[class*="FracCell"]'],
       fallback: null
     }
@@ -55,7 +55,7 @@
     return null;
   }
 
-  // --- изчисляване на състоянието на един буфер ---
+  // --- computing the state of one buffer ---
   function computeStatus(frame, type) {
     let cells = [];
     for (const sel of type.slotSelectors) {
@@ -74,7 +74,7 @@
     return { total, notFull };
   }
 
-  // --- създаване / стилизиране на badge-а ---
+  // --- creating / styling the badge ---
   function makeBadge() {
     const b = document.createElement('span');
     b.setAttribute(BADGE_ATTR, '1');
@@ -86,13 +86,13 @@
   }
 
   function paintBadge(b, st, typeName) {
-    const unit = typeName === 'XIT PROD' ? 'планети' : 'линии';
+    const unit = typeName === 'XIT PROD' ? 'planets' : 'lines';
     if (st.total === 0) {
       b.textContent = '—';
       b.style.background = '#2a2a2a';
       b.style.color = '#888';
       b.style.border = '1px solid #555';
-      b.title = 'Няма видима колона със слотове в този буфер';
+      b.title = 'No visible slots column in this buffer';
       return;
     }
     if (st.notFull > 0) {
@@ -100,17 +100,17 @@
       b.style.background = '#3a1414';
       b.style.color = '#ff6b6b';
       b.style.border = '1px solid #ff6b6b';
-      b.title = st.notFull + ' от ' + st.total + ' ' + unit + ' имат незаети слотове';
+      b.title = st.notFull + ' of ' + st.total + ' ' + unit + ' have free slots';
     } else {
       b.textContent = 'All OK';
       b.style.background = '#143a1c';
       b.style.color = '#5fd07a';
       b.style.border = '1px solid #5fd07a';
-      b.title = 'Всички ' + st.total + ' ' + unit + ' са напълно заети';
+      b.title = 'All ' + st.total + ' ' + unit + ' are fully busy';
     }
   }
 
-  // --- обработка на един буфер ---
+  // --- processing one buffer ---
   function processFrame(frame) {
     const type = bufferTypeOf(frame);
     const head = frame.querySelector(HEADER_SEL);
@@ -119,7 +119,7 @@
     let badge = head.querySelector('[' + BADGE_ATTR + ']');
 
     if (!type) {
-      // буферът е сменил командата си (напр. XIT PROD -> XIT SHIP) → махаме badge-а
+      // the buffer changed its command (e.g. XIT PROD -> XIT SHIP) -> remove the badge
       if (badge) badge.remove();
       return;
     }
@@ -127,7 +127,7 @@
       badge = makeBadge();
       head.style.display = 'flex';
       head.style.alignItems = 'center';
-      head.appendChild(badge); // вляво, до командата — далеч от контролите вдясно
+      head.appendChild(badge); // on the left, next to the command - away from the controls on the right
     }
     paintBadge(badge, computeStatus(frame, type), type.name);
   }
@@ -136,7 +136,7 @@
     document.querySelectorAll(FRAME_SEL).forEach(processFrame);
   }
 
-  // --- наблюдение за нови буфери И за промяна на данните на живо ---
+  // --- watching for new buffers AND for live data changes ---
   let pending = null;
   function schedule() {
     if (pending) return;
@@ -147,7 +147,7 @@
   obs.observe(document.body, {
     childList: true,
     subtree: true,
-    characterData: true // улавя смяната на числата X / Y
+    characterData: true // catches the numbers X / Y changing
   });
 
   scanAll();

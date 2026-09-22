@@ -23,23 +23,23 @@
   var VIEW_SEL  = '[class*="ScrollView__view"]';
   var CMD_RE    = /^\s*(?:XIT[\s_]+)?SSB(?:[\s_]+([A-Z0-9]+))?\s*$/i;
 
-  // Договори, които се броят за активни. OPEN = още неподписан → не е вземане.
+  // Contracts that count as active. OPEN = not signed yet -> not a receivable.
   var ACTIVE_CONTRACT = { CLOSED: 1, PARTIALLY_FULFILLED: 1, DEADLINE_EXCEEDED: 1 };
-  // Условия, които още не са изпълнени (т.е. още не са ми платени)
+  // Conditions that are not fulfilled yet (i.e. not paid to me yet)
   var UNPAID_CONDITION = { PENDING: 1, IN_PROGRESS: 1, PARTLY_FULFILLED: 1, FULFILLMENT_ATTEMPTED: 1, VIOLATED: 1 };
 
   var PAYMENT_TYPES = { PAYMENT: 1, LOAN_PAYOUT: 1 };
   var LOAN_TYPES    = { LOAN_INSTALLMENT: 1 };
 
   // ─────────────────────────────────────────────────────────────
-  //  Достъп до store-а на играта (React fiber -> Redux Provider)
+  //  Access to the game store (React fiber -> Redux Provider)
   // ─────────────────────────────────────────────────────────────
   var _store = null;
 
-  // Firefox: ако Tampermonkey не успее да инжектира в контекста на страницата
-  // (CSP -> fallback от sandbox raw), userscript-ът вижда DOM възлите през Xray
-  // обвивка и свойствата, закачени от самата страница (__reactContainer...), са
-  // невидими. wrappedJSObject връща суровия обект. В Chrome го няма -> no-op.
+  // Firefox: when Tampermonkey cannot inject into the page context
+  // (CSP -> fallback to the sandbox), the userscript sees DOM nodes through an
+  // Xray wrapper and the properties attached by the page itself (__reactContainer...)
+  // are invisible. wrappedJSObject returns the raw object. Absent in Chrome -> no-op.
   function unwrap(el) {
     try { return (el && el.wrappedJSObject) || el; } catch (e) { return el; }
   }
@@ -68,7 +68,7 @@
   }
 
   // ─────────────────────────────────────────────────────────────
-  //  Намиране на договорите (пътят се кешира)
+  //  Finding the contracts (the path is cached)
   // ─────────────────────────────────────────────────────────────
   var _path = null;
 
@@ -99,7 +99,7 @@
     return n;
   }
 
-  // Резервно търсене (BFS до 4 нива) — ако APEX премести клона
+  // Fallback search (BFS up to 4 levels) - in case APEX moves the branch
   function discoverPath(state) {
     var queue = [{ node: state, path: [] }], guard = 0;
     while (queue.length && guard < 4000) {
@@ -147,7 +147,7 @@
   }
 
   // ─────────────────────────────────────────────────────────────
-  //  Извличане на вземанията
+  //  Collecting the receivables
   // ─────────────────────────────────────────────────────────────
   function partnerLabel(p) {
     if (!p) return '???';
@@ -155,18 +155,18 @@
     return (p.code && p.code !== n) ? n + ' (' + p.code + ')' : n;
   }
 
-  // Сума на условието — PAYMENT ползва amount, вноските по заем са в total (repayment + interest)
+  // Condition amount - PAYMENT uses amount, loan installments are in total (repayment + interest)
   function condAmount(cond) {
     var a = cond.total || cond.amount || cond.repayment;
     if (a && typeof a.amount === 'number') return a;
     return null;
   }
 
-  // Падеж. Когато играта не е фиксирала deadline, срокът тръгва след крайния срок на
-  // предходните условия: deadline = най-късния срок сред зависимостите + deadlineDuration.
-  // Това е НАЙ-КЪСНИЯТ възможен падеж — реалният е по-ранен, ако предходното се изпълни
-  // преди своя срок. Затова изчислените срокове се показват с тилда и бледо.
-  // Същият модел ползва Refined PrUn (core/balance/contract-conditions.ts).
+  // Deadline. When the game has not fixed a deadline, the clock starts after the deadline of
+  // the preceding conditions: deadline = latest deadline among the dependencies + deadlineDuration.
+  // This is the LATEST possible deadline - the real one is earlier if the preceding condition is
+  // fulfilled before its own deadline. That is why computed deadlines are shown with a tilde and dimmed.
+  // Refined PrUn uses the same model (core/balance/contract-conditions.ts).
   function calcDeadline(contract, cond, seen) {
     if (cond.type === 'COMEX_PURCHASE_PICKUP') return latestDependency(contract, cond, seen);
     if (cond.deadline && cond.deadline.timestamp) return cond.deadline.timestamp;
@@ -179,7 +179,7 @@
     var t = (contract.date && contract.date.timestamp) || 0;
     var deps = cond.dependencies || [];
     for (var i = 0; i < deps.length; i++) {
-      if (seen.indexOf(deps[i]) >= 0) continue;   // защита от циклична зависимост
+      if (seen.indexOf(deps[i]) >= 0) continue;   // guard against a circular dependency
       var d = (contract.conditions || []).find(function (x) { return x.id === deps[i]; });
       if (!d) continue;
       var v = calcDeadline(contract, d, seen.concat([deps[i]]));
@@ -199,8 +199,8 @@
         var isPay = !!PAYMENT_TYPES[cond.type];
         var isLoan = !!LOAN_TYPES[cond.type];
         if (!isPay && !isLoan) return;
-        if (cond.party === c.party) return;          // това е МОЕ плащане, не вземане
-        if (!UNPAID_CONDITION[cond.status]) return;  // вече платено
+        if (cond.party === c.party) return;          // this is MY payment, not a receivable
+        if (!UNPAID_CONDITION[cond.status]) return;  // already paid
         var amt = condAmount(cond);
         if (!amt || !amt.amount) return;
 
@@ -248,7 +248,7 @@
   }
 
   // ─────────────────────────────────────────────────────────────
-  //  Форматиране
+  //  Formatting
   // ─────────────────────────────────────────────────────────────
   function fmtMoney(n) {
     return n.toLocaleString('bg-BG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -291,8 +291,8 @@
     };
   }
 
-  // Компактен остатък: едно кратко число — дни (d), под денонощие часове (h), после минути (m).
-  // Точната дата отива в tooltip-а, за да не яде колона от layout-а.
+  // Compact remainder: one short number - days (d), under a day hours (h), then minutes (m).
+  // The exact date goes into the tooltip so it does not eat a column of the layout.
   function fmtLeftShort(ts, now, estimated) {
     if (!ts) return { text: '—', cls: 'ssb-muted', title: 'no deadline' };
     var ms = ts - now;
@@ -305,7 +305,7 @@
       var h = Math.floor(abs / 3600000);
       txt = h >= 1 ? h + 'h' : Math.floor(abs / 60000) + 'm';
     }
-    // просрочено и до 1 ден -> червено; над 1 и до 3 дни -> жълто
+    // overdue and up to 1 day -> red; over 1 and up to 3 days -> yellow
     var cls = '';
     if (overdue || ms <= 24 * 3600 * 1000) cls = 'ssb-red';
     else if (ms <= 72 * 3600 * 1000) cls = 'ssb-yellow';
@@ -317,8 +317,8 @@
     };
   }
 
-  // Номерът на договора е линк — отваря нативния буфер CONT <localId>.
-  // Зелен е, когато материалът за условието е налице на съответната локация.
+  // The contract id is a link - it opens the native CONT <localId> buffer.
+  // It is green when the material for the condition is in stock at that location.
   function idCell(r, withFulfill) {
     var cls = 'ssb-link' + (r && r.stockOk ? ' ssb-ok' : '');
     var title = (r && r.stockText) ? ' title="' + esc(r.stockText) + '"' : '';
@@ -328,24 +328,24 @@
   }
 
   // ─────────────────────────────────────────────────────────────
-  //  FULFILL направо от буфера
+  //  FULFILL straight from the buffer
   //
-  //  Играта няма външно API за изпълнение на условие — единственият
-  //  надежден път е истинският бутон в CONT буфера. Затова бутонът тук
-  //  отваря CONT скрито, намира РЕДА НА ТОЧНО ТОВА УСЛОВИЕ и натиска
-  //  неговия FULFILL, после затваря буфера.
+  //  The game has no external API for fulfilling a condition - the only
+  //  reliable path is the real button in the CONT buffer. So this button
+  //  opens CONT hidden, finds THE ROW OF EXACTLY THAT CONDITION and presses
+  //  its FULFILL, then closes the buffer.
   //
-  //  Съответствие ред <-> условие (проверено на живо 14.09.2026):
-  //  всяко условие е <tr>, чиято първа клетка е "#N", където
-  //  N = cond.index + 1 (UI-то брои от 1, store-ът от 0).
-  //  Бутонът е неактивен чрез КЛАС `Button__disabled___`, а НЕ чрез
-  //  атрибута disabled — `b.disabled` е false дори когато е сив.
+  //  Row <-> condition mapping (verified live 14.09.2026):
+  //  every condition is a <tr> whose first cell is "#N", where
+  //  N = cond.index + 1 (the UI counts from 1, the store from 0).
+  //  The button is disabled through the CLASS `Button__disabled___`, NOT through
+  //  the disabled attribute - `b.disabled` is false even when it is greyed out.
   // ─────────────────────────────────────────────────────────────
 
   var _btnCls = null;
 
-  // Истинските класове на бутоните се вадят от стиловете на играта,
-  // за да изглежда еднакво с FULFILL в договора.
+  // The real button classes are taken from the game stylesheets,
+  // so it looks the same as FULFILL inside the contract.
   function gameBtnClass() {
     if (_btnCls) return _btnCls;
     var found = { btn: '', success: '' };
@@ -381,7 +381,7 @@
       '" title="Fulfill this condition">FULFILL</span>';
   }
 
-  // Отваря буфер с команда и подава създадения прозорец на callback-а
+  // Opens a buffer with a command and hands the created window to the callback
   function openCommand(command, cb, hidden) {
     var create = document.querySelector('[class*="Dock__create"]');
     if (!create) { if (cb) cb(null); return; }
@@ -415,10 +415,10 @@
     if (x) x.click();
   }
 
-  // Редът на условието в CONT буфера: първата клетка е "#N", N = index + 1.
-  // Засечка по количеството ("of 3 units of ..."), защото CONT изписва пълното
-  // име на материала ("Fuel-saving STL Engine"), а store-ът пази тикер (FSE) и
-  // вътрешно име (fuelSavingEngine) — по текст материалът не се сверява.
+  // The condition row in the CONT buffer: the first cell is "#N", N = index + 1.
+  // Cross-checked by amount ("of 3 units of ..."), because CONT writes the full
+  // material name ("Fuel-saving STL Engine") while the store keeps a ticker (FSE) and
+  // an internal name (fuelSavingEngine) - the material cannot be matched by text.
   function conditionRow(win, index, amount, kind) {
     var rows = [].slice.call(win.querySelectorAll('tr'));
     var want = '#' + (index + 1);
@@ -433,21 +433,21 @@
     return null;
   }
 
-  // Редовете на пакетите носят мястото: "Pick up shipment (1.68t / 2.10m³) @ Moria Station (Moria)",
-  // "Deliver shipment @ Neo Eden - Nemesis (JS-299a)" (проверено на живо 22.09.2026).
+  // Shipment rows carry the place: "Pick up shipment (1.68t / 2.10m³) @ Moria Station (Moria)",
+  // "Deliver shipment @ Neo Eden - Nemesis (JS-299a)" (verified live 22.09.2026).
   function rowHasPlace(text, place) {
     var norm = function (x) { return String(x).replace(/\s+/g, ' ').trim().toUpperCase(); };
     return !!place && norm(text).indexOf(norm(place)) >= 0;
   }
 
-  // Материалните редове пишат "of 3 units of ...", паричните — сума с разделители
-  // ("Payment of 1,056,840 NCC"). За парите се сравняват числата, не текстът, за да
-  // не зависим от формата на разделителя.
+  // Material rows say "of 3 units of ...", money rows a grouped amount
+  // ("Payment of 1,056,840 NCC"). For money the numbers are compared, not the text,
+  // so we do not depend on the separator format.
   function rowHasAmount(text, amount, kind) {
     var txt = String(text).replace(/\s+/g, ' ');
-    // Капан: играта групира хилядните ("Delivery of 2,000 units"), затова числата
-    // се сравняват числово, а не като текст. При материалите котвата е думата
-    // "unit", за да не се хване срокът или друго число от реда.
+    // Trap: the game groups thousands ("Delivery of 2,000 units"), so the numbers
+    // are compared numerically, not as text. For materials the anchor is the word
+    // "unit", so the deadline or another number from the row is not picked up.
     var re = kind === 'money' ? /\d[\d.,\u00a0 ]*\d|\d/g
                               : /(\d[\d.,\u00a0 ]*\d|\d)\s*unit/gi;
     var m;
@@ -458,9 +458,9 @@
     return false;
   }
 
-  // CONT ОТРЯЗВА стотинките при показване: 2 508 797,50 излиза като
-  // "Payment of 2,508,797 NCC". Затова освен точното съвпадение се приемат
-  // и закръглената, и отрязаната стойност - иначе бутонът отказваше плащания.
+  // CONT TRUNCATES the cents when displaying: 2 508 797.50 comes out as
+  // "Payment of 2,508,797 NCC". So besides the exact match, the rounded and
+  // the truncated value are accepted too - otherwise the button refused payments.
   function sameMoney(shown, amount) {
     if (Math.abs(shown - amount) < 0.005) return true;
     if (shown === Math.floor(amount)) return true;
@@ -468,7 +468,7 @@
     return false;
   }
 
-  // "1,056,840.00" / "1 056 840,00" / "1056840" -> число
+  // "1,056,840.00" / "1 056 840,00" / "1056840" -> number
   function normalizeNumber(tok) {
     var t = tok.replace(/[\u00a0 ]/g, '');
     var lastDot = t.lastIndexOf('.'), lastComma = t.lastIndexOf(',');
@@ -548,7 +548,7 @@
   }, true);
 
   // ─────────────────────────────────────────────────────────────
-  //  Стилове
+  //  Styles
   // ─────────────────────────────────────────────────────────────
   var CSS = [
     '.ssb-root{font-family:inherit;font-size:12px;color:#c8c8c8;padding:4px 6px 10px;box-sizing:border-box;min-height:100%;}',
@@ -604,7 +604,7 @@
   }
 
   // ─────────────────────────────────────────────────────────────
-  //  Рендер
+  //  Rendering
   // ─────────────────────────────────────────────────────────────
   function buildTable(groups, now, isLoan, sec) {
     var t = document.createElement('table');
@@ -658,11 +658,11 @@
   }
 
   // ─────────────────────────────────────────────────────────────
-  //  Свиване на групите по партньор (от 3.5, по желание на Стокич от 22.09.2026)
+  //  Collapsing the partner groups (since 3.5)
   //
-  //  Свити по подразбиране. Състоянието е в паметта на страницата, за да
-  //  преживее пререндера на 30 s и при промяна в store-а; при презареждане
-  //  на страницата всичко пак е свито. Ключът е <секция>|<partnerKey>.
+  //  Collapsed by default. The state lives in page memory so it survives the
+  //  30 s re-render and store changes; on a page reload everything is collapsed
+  //  again. The key is <section>|<partnerKey>.
   // ─────────────────────────────────────────────────────────────
   var _grpOpen = {};
 
@@ -675,7 +675,7 @@
       '</span><span>' + (right || '') + '</span></div>';
   }
 
-  // Прилага състоянието върху вече построена таблица (без пререндер)
+  // Applies the state to an already built table (no re-render)
   function applyGroupState(table, sec) {
     var allOpen = true, any = false;
     [].slice.call(table.querySelectorAll('tr.ssb-grp[data-grp]')).forEach(function (gr) {
@@ -687,8 +687,8 @@
       gr.title = open ? 'Collapse' : 'Expand';
     });
     [].slice.call(table.querySelectorAll('tr.ssb-row[data-grp]')).forEach(function (tr) {
-      // Ред с активен FULFILL се вижда винаги, и в свита група (Стокич, 22.09.2026):
-      // това са нещата, които мога да свърша сега, и не бива да се крият зад плюса.
+      // A row with an enabled FULFILL is always visible, even in a collapsed group:
+      // these are the things that can be done right now and must not hide behind the plus.
       var hide = !_grpOpen[tr.getAttribute('data-grp')] && !tr.querySelector('.ssb-ff');
       tr.classList.toggle('ssb-hid', hide);
     });
@@ -711,7 +711,7 @@
     applyGroupState(table, sec);
   }
 
-  // Бутонът „all" е извън таблицата и при строежа ѝ още не е в DOM - обновява се след рендера
+  // The "all" button is outside the table and is not in the DOM while it is built - refreshed after render
   function refreshGroupButtons(root) {
     [].slice.call(root.querySelectorAll('table[data-sec]')).forEach(function (t) {
       applyGroupState(t, t.getAttribute('data-sec'));
@@ -742,7 +742,7 @@
   }
 
   // ─────────────────────────────────────────────────────────────
-  //  Подкоманда VZEM — вземания по договори
+  //  Subcommand VZEM - receivables on contracts
   // ─────────────────────────────────────────────────────────────
   function renderVZEM(root) {
     var data = collect();
@@ -781,22 +781,22 @@
   }
 
   // ─────────────────────────────────────────────────────────────
-  //  Подкоманда PART — неизпълнени условия по договорите
+  //  Subcommand PART - outstanding contract conditions
   //
-  //  Огледало на XIT CONTC, но обърнато към другата страна: какво
-  //  ОЧАКВАМ партньорите да изпълнят. Парите (PAYMENT, LOAN_PAYOUT,
-  //  LOAN_INSTALLMENT) не влизат там — те се следят в SSB VZEM.
-  //  В секцията с моите задължения парите ВЛИЗАТ, защото те не се
-  //  следят никъде другаде.
+  //  A mirror of XIT CONTC, but turned to the other side: what I
+  //  EXPECT the partners to fulfil. Money (PAYMENT, LOAN_PAYOUT,
+  //  LOAN_INSTALLMENT) is not there - it is tracked in SSB VZEM.
+  //  In the section with my own obligations money IS included, because it is
+  //  not tracked anywhere else.
   // ─────────────────────────────────────────────────────────────
   var MONEY_TYPES = { PAYMENT: 1, LOAN_PAYOUT: 1, LOAN_INSTALLMENT: 1 };
 
-  // В „My obligations" показваме само условията, по които МОГА да действам сега — тези,
-  // чиито зависимости са изпълнени. Останалите чакат партньора и само шумят.
-  // false => показва всичко, както преди v2.6.
+  // In "My obligations" only the conditions I CAN act on right now are shown - those
+  // whose dependencies are fulfilled. The rest wait on the partner and are just noise.
+  // false => show everything, as before v2.6.
   var MINE_ONLY_ACTIONABLE = true;
 
-  // Имената на типовете са както ги пише Refined PrUn (friendlyConditionText в CONTS/utils.ts)
+  // Type names are as Refined PrUn writes them (friendlyConditionText in CONTS/utils.ts)
   var TYPE_LABEL = {
     BASE_CONSTRUCTION: 'Construct Base',
     COMEX_PURCHASE_PICKUP: 'Material Pickup',
@@ -838,29 +838,29 @@
   };
 
   // ─────────────────────────────────────────────────────────────
-  //  Наличности: имам ли материала, с който да изпълня условието
+  //  Stock: do I have the material to fulfil the condition
   //
-  //  Проверено на живо (2026-09-13) в store-а на APEX:
+  //  Verified live (2026-09-13) in the APEX store:
   //    ['storage','stores']       — Map id -> Store (addressableId, items, type)
-  //    ['address','addressable']  — Map addressableId -> Address (може да е null)
-  //  Складът НЕ носи адрес; той се вади от втората карта по addressableId.
-  //  Кораб в полет има null адрес -> товарът му не се брои никъде, което е
-  //  вярното поведение (не е на местоназначението).
+  //    ['address','addressable']  - Map addressableId -> Address (may be null)
+  //  A store does NOT carry an address; it comes from the second map by addressableId.
+  //  A ship in flight has a null address -> its cargo is not counted anywhere, which is
+  //  the correct behaviour (it is not at the destination).
   // ─────────────────────────────────────────────────────────────
 
-  // Типове условия, при които аз ДАВАМ материала (значи трябва да го имам).
-  // COMEX_PURCHASE_PICKUP е обратното — там материалът се получава.
+  // Condition types where I GIVE the material (so I must have it).
+  // COMEX_PURCHASE_PICKUP is the opposite - there the material is received.
   var MATERIAL_OUT_TYPES = { DELIVERY: 1, PROVISION: 1, PROVISION_SHIPMENT: 1 };
 
-  // Условия, на които се слага бутон FULFILL. Материалните — само когато стоката е
-  // налице (зелен номер). Пакетите и вземанията (PICKUP_SHIPMENT, DELIVERY_SHIPMENT,
-  // PICKUP) — когато имам склад/кораб на мястото, а при доставка на пакет - когато
-  // самият пакет е в мой склад там (от 3.4). Плащанията — винаги, защото наличността на парите не се
-  // чете от store-а: ако не стигат, играта прави своя бутон сив и скриптът отказва
-  // да го натисне. LOAN_INSTALLMENT не влиза — вноските по заем са автоматични.
+  // Conditions that get a FULFILL button. Material ones - only when the goods are
+  // in stock (green id). Shipments and pickups (PICKUP_SHIPMENT, DELIVERY_SHIPMENT,
+  // PICKUP, COMEX_PURCHASE_PICKUP) - when I have a store or ship on site, and for a shipment
+  // delivery when the shipment itself is in a store of mine there (since 3.4). Payments - always,
+  // because the available money is not read from the store: if it is short, the game greys out its
+  // own button and the script refuses to press it. LOAN_INSTALLMENT is excluded - loan installments are automatic.
   var PAY_FULFILL_TYPES = { PAYMENT: 1, LOAN_PAYOUT: 1 };
-  // Пакетите: редът в CONT няма количество ("Deliver shipment @ Neo Eden - Nemesis (JS-299a)"),
-  // затова втората стойност за сверка е името на мястото.
+  // Shipments: the CONT row has no amount ("Deliver shipment @ Neo Eden - Nemesis (JS-299a)"),
+  // so the second value to cross-check is the name of the place.
   var SHIPMENT_TYPES = { PICKUP_SHIPMENT: 1, DELIVERY_SHIPMENT: 1 };
 
   function canFulfill(r) {
@@ -870,7 +870,7 @@
 
   var _storesPath = null;
   var _addrPath = null;
-  var _storageTried = 0;   // неуспешното търсене не се повтаря на всеки рендер
+  var _storageTried = 0;   // a failed search is not repeated on every render
 
   function looksLikeStores(node) {
     var vals = valuesOf(node);
@@ -879,7 +879,7 @@
     return !!(s && typeof s === 'object' && s.addressableId && Array.isArray(s.items));
   }
 
-  // Стойностите тук са самите адреси ({lines:[...]}), а част от тях са null
+  // The values here are the addresses themselves ({lines:[...]}), and some of them are null
   function looksLikeAddressIndex(node) {
     var vals = valuesOf(node);
     if (!vals || !vals.length) return false;
@@ -918,7 +918,7 @@
     return discoverPathBy(state, test);
   }
 
-  // Ключ на локация — id на планетата/станцията от адреса
+  // Location key - id of the planet/station from the address
   function addressKey(addr) {
     if (!addr || !addr.lines) return null;
     var last = null;
@@ -931,7 +931,7 @@
     return last ? last.id : null;
   }
 
-  // { locationId: { TICKER: amount } }, плюс имена на локациите
+  // { locationId: { TICKER: amount } }, plus the location names
   var _locNames = {};
 
   function buildStock() {
@@ -950,7 +950,7 @@
     }
     if (!_storesPath || !_addrPath) return null;
 
-    // addressableId -> id на локацията
+    // addressableId -> location id
     var idx = getIn(state, _addrPath);
     var keys = (idx && typeof idx.keySeq === 'function') ? idx.keySeq().toArray()
              : (idx ? Object.keys(idx) : []);
@@ -960,20 +960,20 @@
       var a;
       try { a = plain((typeof idx.get === 'function') ? idx.get(keys[k]) : idx[keys[k]]); } catch (e3) { continue; }
       var loc = addressKey(a);
-      if (!loc) continue;                       // кораб в полет -> null адрес
+      if (!loc) continue;                       // ship in flight -> null address
       where[keys[k]] = loc;
       if (!_locNames[loc]) _locNames[loc] = fmtAddress(a);
     }
 
     var stock = {};
-    // places: locId -> имена на моите складове там (кораб, база, нает склад);
-    // shipments: id на SHPT елемент -> { loc, store } (пакетите нямат quantity, само id/type/weight/volume)
+    // places: locId -> names of my stores there (ship, base, rented warehouse);
+    // shipments: id of a SHPT item -> { loc, store } (shipments have no quantity, only id/type/weight/volume)
     var places = {}, shipments = {};
     var stores = valuesOf(getIn(state, _storesPath)) || [];
     for (var s = 0; s < stores.length; s++) {
       var store = plain(stores[s]);
       if (!store || SKIP_STORE_TYPES[store.type]) continue;
-      var locId = where[store.addressableId] || null;   // null = кораб в полет
+      var locId = where[store.addressableId] || null;   // null = ship in flight
       var bag = locId ? (stock[locId] || (stock[locId] = {})) : null;
       if (locId && !FUEL_STORE_TYPES[store.type]) {
         (places[locId] || (places[locId] = [])).push(storeLabel(store));
@@ -1001,8 +1001,8 @@
     return store.type === 'WAREHOUSE_STORE' ? 'warehouse' : store.type === 'SHIP_STORE' ? 'ship' : 'base';
   }
 
-  // Името на най-конкретното ниво на адреса (Nemesis / Moria Station) - това
-  // е втората стойност, по която се сверява редът в CONT при пакетите.
+  // The name of the most specific level of the address (Nemesis / Moria Station) - this
+  // is the second value used to cross-check the CONT row for shipments.
   function placeName(addr) {
     if (!addr || !addr.lines) return '';
     var best = null;
@@ -1010,7 +1010,7 @@
     return best ? (best.name || best.naturalId || '') : '';
   }
 
-  // Адресът е списък от нива (SYSTEM / PLANET / STATION) — взимаме най-конкретното
+  // The address is a list of levels (SYSTEM / PLANET / STATION) - take the most specific
   function fmtAddress(addr) {
     if (!addr || !addr.lines || !addr.lines.length) return '';
     var best = null;
@@ -1030,7 +1030,7 @@
     return (q.amount != null ? q.amount + ' ' : '') + t;
   }
 
-  // Текстът на условието — превод на ConditionText.vue от Refined PrUn
+  // The condition text - a port of ConditionText.vue from Refined PrUn
   function condText(cond) {
     var at = cond.address ? ' @ ' + fmtAddress(cond.address) : '';
     var a;
@@ -1070,7 +1070,7 @@
     }
   }
 
-  // Срокът на условието тече само когато всички зависимости са изпълнени
+  // A condition deadline only runs once all dependencies are fulfilled
   function depsReady(contract, cond) {
     var deps = cond.dependencies || [];
     var list = contract.conditions || [];
@@ -1097,21 +1097,21 @@
         if (!UNPAID_CONDITION[cond.status]) return;
 
         var isMine = cond.party === c.party;
-        // Парите на партньора са вземания -> следят се в SSB VZEM
+        // The partner's money is a receivable -> tracked in SSB VZEM
         if (!isMine && MONEY_TYPES[cond.type]) return;
 
         var fixed = (cond.deadline && cond.deadline.timestamp) || null;
         var deadline = fixed || calcDeadline(c, cond, []);
         var amt = MONEY_TYPES[cond.type] ? condAmount(cond) : null;
 
-        // Мога ли да го изпълня сега — имам ли материала на място?
+        // Can I fulfil it right now - do I have the material on site?
         var stockOk = false, stockText = '';
         var ready = depsReady(c, cond);
         var condPlace = cond.destination || cond.address;
         if (isMine && cond.type === 'DELIVERY_SHIPMENT') {
-          // Пакетът (shipmentItemId) трябва да е в МОЙ склад на местоназначението -
-          // кораб, база или нает склад (Стокич, 22.09.2026). Проверено на живо:
-          // елементът е type 'SHIPMENT' с id = shipmentItemId, без quantity.
+          // The shipment (shipmentItemId) must be in a store of MINE at the destination -
+          // ship, base or rented warehouse. Verified live: the item is
+          // type 'SHIPMENT' with id = shipmentItemId, without quantity.
           var sLoc = addressKey(condPlace);
           var sWhere = (shipments && cond.shipmentItemId) ? shipments[cond.shipmentItemId] : null;
           if (shipments && sLoc) {
@@ -1122,9 +1122,9 @@
               : 'SHPT is in ' + sWhere.store + ', not @ ' + fmtAddress(condPlace);
           }
         } else if (isMine && (cond.type === 'PICKUP_SHIPMENT' || cond.type === 'PICKUP' || cond.type === 'COMEX_PURCHASE_PICKUP')) {
-          // Вземане (пакет, стока от партньор или покупка от борсата - COMEX_PURCHASE_PICKUP,
-          // добавено в 3.7 по искане на Стокич от 22.09.2026): трябва мой склад/кораб на мястото
-          // и провизията да е изпълнена. Наличността при партньора не се вижда.
+          // Pickup (a shipment, goods from a partner or an exchange purchase -
+          // COMEX_PURCHASE_PICKUP, since 3.7): needs a store or ship of mine on site
+          // and the provision fulfilled. The stock on the partner side is not visible.
           var pLoc = addressKey(condPlace);
           var here = (places && pLoc) ? (places[pLoc] || []) : null;
           if (here !== null) {
@@ -1295,7 +1295,7 @@
   }
 
   // ─────────────────────────────────────────────────────────────
-  //  Регистър на подкомандите — тук се добавя всяка нова
+  //  Registry of the subcommands - every new one is added here
   // ─────────────────────────────────────────────────────────────
   var COMMANDS = {
     VZEM: {
@@ -1348,19 +1348,19 @@
   }
 
   // ─────────────────────────────────────────────────────────────
-  //  Командният ред: "SSB VZEM" -> "XIT SSB VZEM"
+  //  The command line: "SSB VZEM" -> "XIT SSB VZEM"
   //
-  //  APEX не приема произволни команди — при непозната командният ред връща
-  //  предупреждение и изобщо не създава буфер. Затова прихващаме submit-а в
-  //  capture фаза (за да сме преди Refined PrUn), подменяме текста с валидната
-  //  XIT команда и подаваме формата наново. Потребителят пише "SSB VZEM",
-  //  играта получава "XIT SSB VZEM".
+  //  APEX does not accept arbitrary commands - for an unknown one the command line
+  //  returns a warning and creates no buffer at all. So we intercept the submit in
+  //  the capture phase (to be ahead of Refined PrUn), replace the text with the valid
+  //  XIT command and submit the form again. The user types "SSB VZEM",
+  //  the game receives "XIT SSB VZEM".
   // ─────────────────────────────────────────────────────────────
   var TYPED_RE = /^\s*SSB(?:[\s_]+([A-Za-z0-9]+))?\s*$/i;
   var skipNextSubmit = false;
 
   function changeInputValue(input, value) {
-    // React подменя нативния сетер, затова се вика оригиналният
+    // React replaces the native setter, so the original one is called
     var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
     setter.set.call(input, value);
     input.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true }));
@@ -1394,15 +1394,15 @@
   }, true);
 
   // ─────────────────────────────────────────────────────────────
-  //  Закачане към буфера
+  //  Attaching to the buffer
   // ─────────────────────────────────────────────────────────────
   var mounted = [];
 
   function attach(frame, sub) {
     var existing = frame.querySelector('.ssb-root');
     if (existing) {
-      if (existing.dataset.sub === sub) return;   // същата подкоманда — нищо за правене
-      existing.dataset.sub = sub;                 // сменена подкоманда в същия буфер
+      if (existing.dataset.sub === sub) return;   // same subcommand - nothing to do
+      existing.dataset.sub = sub;                 // subcommand changed in the same buffer
       render(existing);
       setTitle(frame, sub);
       return;
@@ -1410,7 +1410,7 @@
     var view = frame.querySelector(VIEW_SEL);
     if (!view) return;
     var host = view.children[0] || view;
-    host.textContent = '';                 // маха и "Error! No Matching Function!" на Refined PrUn
+    host.textContent = '';                 // also clears Refined PrUn's "Error! No Matching Function!"
     host.removeAttribute('style');
     host.style.width = '100%';
     host.style.height = '100%';
@@ -1428,8 +1428,8 @@
       var want = (COMMANDS[sub] && COMMANDS[sub].title) || 'SSB';
       if (title.textContent !== want) title.textContent = want;
     }
-    // Играта държи командата като "XIT SSB VZEM"; в заглавния ред я показваме
-    // както Стокич я е написал. Само визуално — състоянието на играта не се пипа.
+    // The game keeps the command as "XIT SSB VZEM"; in the header we show it
+    // the way the user typed it. Purely visual - the game state is untouched.
     var cmdEl = frame.querySelector(CMD_SEL);
     if (cmdEl) {
       var shown = 'SSB' + (sub ? ' ' + sub : '');
@@ -1475,7 +1475,7 @@
   scan();
   setInterval(function () { scan(); renderAll(); }, 30000);
 
-  // Живо обновяване при промяна в store-а
+  // Live refresh on store changes
   var unsub = null;
   setInterval(function () {
     if (unsub) return;
@@ -1488,7 +1488,7 @@
     });
   }, 3000);
 
-  // Диагностика от конзолата
+  // Diagnostics from the console
   window.SSB = {
     version: VERSION,
     commands: COMMANDS,
@@ -1498,7 +1498,7 @@
     stock: buildStock,
     storagePaths: function () { return { stores: _storesPath, address: _addrPath }; },
     refresh: function () { scan(); renderAll(); },
-    // Доклад за чужда инсталация: копира се от конзолата и се праща. Не пипа нищо.
+  // Report for someone else's install: copy it from the console and send it. Touches nothing.
     diag: function () {
       scan();
       var st = null, storeErr = null;
