@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         APEX Corp Price (CP) — CXPO, CXM, MAT & CXOB
 // @namespace    https://prosperousuniverse.com/
-// @version      3.5
+// @version      3.6
 // @updateURL    https://raw.githubusercontent.com/stokovich/prun-scripts/main/apex-corp-price.user.js
 // @downloadURL  https://raw.githubusercontent.com/stokovich/prun-scripts/main/apex-corp-price.user.js
-// @description  Shows Corp Price (CP) from Google Sheets in Place Order (CXPO), CX Material Info (CXM), Material (MAT) and Order Book (CXOB) screens
+// @description  Shows the corp price (CP) for both regions, MOR and HUB, in Place Order (CXPO), CX Material Info (CXM), Material (MAT) and Order Book (CXOB)
 // @match        https://apex.prosperousuniverse.com/*
 // @grant        none
 // @run-at       document-idle
@@ -14,22 +14,25 @@
 
   // Version marker for easy diagnostics from the console:
   // document.documentElement.dataset.puCpVersion
-  document.documentElement.dataset.puCpVersion = '3.5';
+  document.documentElement.dataset.puCpVersion = '3.6';
 
   const SHID = '1bK512U_uLjW-BIqCiP4U3X7Q4eTDZhopm9rnUtp4-nI';
-  const SHN  = 'MOR';
+  // One entry per region; each is a tab of the export spreadsheet holding
+  // nothing but ticker + price. The order here is the order on screen.
+  const REGIONS = [
+    { key: 'MOR', sheet: 'MOR' },
+    { key: 'HUB', sheet: 'HUB' },
+  ];
 
-  /* ── CP fetch (cached per session) ─────────────────────────────────── */
+  /* ── CP fetch, all regions, cached per session ───────────────── */
   let cpCache = null;
   let cpFetchPromise = null;
 
-  function fetchCP() {
-    if (cpCache) return Promise.resolve(cpCache);
-    if (cpFetchPromise) return cpFetchPromise;
+  function fetchRegion(sheet) {
     const url =
       `https://docs.google.com/spreadsheets/d/${SHID}/gviz/tq?tqx=out:json` +
-      `&sheet=${encodeURIComponent(SHN)}&tq=${encodeURIComponent('SELECT A,B')}`;
-    cpFetchPromise = fetch(url)
+      `&sheet=${encodeURIComponent(sheet)}&tq=${encodeURIComponent('SELECT A,B')}`;
+    return fetch(url)
       .then(r => r.text())
       .then(text => {
         const m = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)/);
@@ -41,10 +44,23 @@
           const price  = row.c?.[1]?.v;
           if (ticker != null && price != null) map[ticker] = price;
         });
-        cpCache = map;
         return map;
       })
       .catch(() => ({}));
+  }
+
+  // Both regions are fetched in parallel and one failing leaves the other
+  // usable - a missing region shows "-" instead of blanking the whole widget.
+  function fetchCP() {
+    if (cpCache) return Promise.resolve(cpCache);
+    if (cpFetchPromise) return cpFetchPromise;
+    cpFetchPromise = Promise.all(REGIONS.map(r => fetchRegion(r.sheet)))
+      .then(maps => {
+        const byRegion = {};
+        REGIONS.forEach((r, i) => { byRegion[r.key] = maps[i]; });
+        cpCache = byRegion;
+        return byRegion;
+      });
     return cpFetchPromise;
   }
 
@@ -85,27 +101,55 @@
       'flex-shrink:0',
     ].join(';');
 
+    const DIM = 'color:#6c7086;font-size:10px;letter-spacing:2px;';
+
     const lbl = document.createElement('span');
     lbl.textContent = 'CP';
-    lbl.style.cssText = 'color:#6c7086;text-transform:uppercase;font-size:10px;letter-spacing:2px;';
-
-    const val = document.createElement('span');
-    val.textContent = '…';
-    val.style.cssText = 'color:#c8a44a;font-weight:bold;';
-
+    lbl.style.cssText = DIM + 'text-transform:uppercase;';
     wrap.appendChild(lbl);
-    wrap.appendChild(val);
-    return { wrap, val };
+
+    // One horizontal row: MOR : 1,234.56 / HUB : 1,300.00 NCC
+    const cells = {};
+    REGIONS.forEach((r, i) => {
+      if (i) {
+        const slash = document.createElement('span');
+        slash.textContent = '/';
+        slash.style.cssText = 'color:#2a2d3e;';
+        wrap.appendChild(slash);
+      }
+      const tag = document.createElement('span');
+      tag.textContent = r.key + ' :';
+      tag.style.cssText = DIM;
+      wrap.appendChild(tag);
+
+      const val = document.createElement('span');
+      val.textContent = '…';
+      val.style.cssText = 'color:#c8a44a;font-weight:bold;';
+      wrap.appendChild(val);
+      cells[r.key] = val;
+    });
+
+    const unit = document.createElement('span');
+    unit.textContent = 'NCC';
+    unit.style.cssText = DIM;
+    wrap.appendChild(unit);
+
+    return { wrap, cells };
   }
 
-  async function fillCP(valEl, ticker) {
-    const map = await fetchCP();
-    const cp = map[ticker];
-    if (cp != null) {
-      valEl.textContent = formatCP(cp) + ' NCC';
-    } else {
-      valEl.textContent = '—';
-      valEl.style.color = '#6c7086';
+  async function fillCP(cells, ticker) {
+    const byRegion = await fetchCP();
+    for (const r of REGIONS) {
+      const el = cells[r.key];
+      if (!el) continue;
+      const cp = byRegion[r.key]?.[ticker];
+      if (cp != null) {
+        el.textContent = formatCP(cp);
+      } else {
+        el.textContent = '-';
+        el.style.color = '#6c7086';
+        el.style.fontWeight = 'normal';
+      }
     }
   }
 
@@ -128,10 +172,10 @@
     }
     if (!ticker) return;
 
-    const { wrap, val } = makeCPWidget('pu-cp-cxpo');
+    const { wrap, cells } = makeCPWidget('pu-cp-cxpo');
     wrap.style.cssText += ';border:none;background:transparent;padding:4px 8px;justify-content:flex-end;';
     form.appendChild(wrap);
-    fillCP(val, ticker);
+    fillCP(cells, ticker);
   }
 
   /* ══ HANDLER 2: CXM — CX Material Info header ══════════════════════
@@ -151,9 +195,9 @@
     header.style.alignItems = 'center';
     header.style.width = '100%';
 
-    const { wrap, val } = makeCPWidget('pu-cp-cxm');
+    const { wrap, cells } = makeCPWidget('pu-cp-cxm');
     header.appendChild(wrap);
-    fillCP(val, ticker);
+    fillCP(cells, ticker);
   }
 
   /* ══ HANDLER 3: MAT — Material Info header ══════════════════════════
@@ -172,9 +216,9 @@
     header.style.alignItems = 'center';
     header.style.width = '100%';
 
-    const { wrap, val } = makeCPWidget('pu-cp-mat');
+    const { wrap, cells } = makeCPWidget('pu-cp-mat');
     header.appendChild(wrap);
-    fillCP(val, ticker);
+    fillCP(cells, ticker);
   }
 
   /* ══ HANDLER 4: CXOB — Order Book tile header ═══════════════════════
@@ -196,7 +240,7 @@
     header.style.display = 'flex';
     header.style.alignItems = 'center';
 
-    const { wrap, val } = makeCPWidget('pu-cp-cxob');
+    const { wrap, cells } = makeCPWidget('pu-cp-cxob');
     wrap.dataset.ticker = ticker;
     // Reserve space for the tile controls (min/max/close) overlaying the
     // right edge of the header.
@@ -205,7 +249,7 @@
     wrap.style.marginRight = (ctrlW || 72) + 'px';
     wrap.style.padding = '1px 12px';
     header.appendChild(wrap);
-    fillCP(val, ticker);
+    fillCP(cells, ticker);
   }
 
   /* ── MutationObserver ───────────────────────────────────────────────── */
