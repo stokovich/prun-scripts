@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SSB — Stoka's Script Buffer
 // @namespace    pu-stokovich
-// @version      3.11
+// @version      3.12
 // @updateURL    https://raw.githubusercontent.com/stokovich/prun-scripts/main/ssb.user.js
 // @downloadURL  https://raw.githubusercontent.com/stokovich/prun-scripts/main/ssb.user.js
 // @description  SSB (Stoka's Script Buffer) - own APEX buffer with subcommands. SSB VZEM: receivables on active contracts. SSB PART: outstanding contract conditions - what partners owe me (money excluded) and what I owe (money included).
@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '3.11';
+  var VERSION = '3.12';
   document.documentElement.dataset.puSsbVersion = VERSION;
   try { console.log('[SSB ' + VERSION + '] loaded on ' + location.host + ' - type SSB.diag() in the console for a status report'); } catch (e) {}
 
@@ -592,7 +592,9 @@
     '.ssb-opt{margin-left:auto;color:#8f8f8f;cursor:pointer;user-select:none;white-space:nowrap;}',
     '.ssb-opt:hover{color:#f0a500;}',
     '.ssb-ffn{color:#5cb85c;font-weight:700;}',
-    '.ssb-cb{vertical-align:-2px;margin:0 5px 0 0;accent-color:#5cb85c;pointer-events:none;}'
+    '.ssb-cb{vertical-align:-2px;margin:0 5px 0 0;accent-color:#5cb85c;pointer-events:none;}',
+    '.ssb-upd{background:#2b2718;border:1px solid #6b5d1f;color:#d9c04a;padding:4px 8px;margin:0 0 6px;line-height:1.5;}',
+    '.ssb-upd a{color:#f0a500;text-decoration:underline;}'
   ].join('\n');
 
   function injectCSS() {
@@ -1366,10 +1368,64 @@
     root.innerHTML = html;
   }
 
+  // ───────────────────────────────────────────────────────────
+  //  Update notice (since 3.12)
+  //
+  //  Tampermonkey refuses to auto-update a script it considers locally modified,
+  //  which is what installing by hand over an existing entry makes it - and it
+  //  says nothing about that: the update check just reports no update. So the
+  //  script compares its own version with the published one and puts a line at
+  //  the top of the buffer. Installing from there is one click.
+  //
+  //  The published file is fetched at most once every 6 hours and the answer is
+  //  cached in localStorage, so a reload does not hit GitHub again.
+  // ───────────────────────────────────────────────────────────
+  var UPD_URL = 'https://raw.githubusercontent.com/stokovich/prun-scripts/main/ssb.user.js';
+  var UPD_KEY = 'ssb-upd';
+  var UPD_EVERY = 6 * 3600 * 1000;
+  var _latest = null;
+
+  function verCmp(a, b) {
+    var x = String(a).split('.'), y = String(b).split('.');
+    for (var i = 0; i < Math.max(x.length, y.length); i++) {
+      var d = (parseInt(x[i], 10) || 0) - (parseInt(y[i], 10) || 0);
+      if (d) return d < 0 ? -1 : 1;
+    }
+    return 0;
+  }
+
+  function checkUpdate() {
+    var c = {};
+    try { c = JSON.parse(localStorage.getItem(UPD_KEY) || '{}'); } catch (e) {}
+    if (c.version) _latest = c.version;
+    if (c.at && Date.now() - c.at < UPD_EVERY) return;
+    fetch(UPD_URL, { cache: 'no-cache' })
+      .then(function (r) { return r.text(); })
+      .then(function (txt) {
+        var m = txt.match(/^\/\/\s*@version\s+(\S+)/m);
+        if (!m) return;
+        _latest = m[1];
+        try { localStorage.setItem(UPD_KEY, JSON.stringify({ at: Date.now(), version: _latest })); } catch (e) {}
+        if (verCmp(_latest, VERSION) > 0) renderAll();
+      })
+      .catch(function () {});   // offline or blocked - the notice simply stays away
+  }
+
+  function updNoticeHTML() {
+    if (!_latest || verCmp(_latest, VERSION) <= 0) return '';
+    return '<div class="ssb-upd">SSB <b>' + esc(_latest) + '</b> is out - you are running ' +
+      esc(VERSION) + '. <a href="' + UPD_URL + '" target="_blank" rel="noopener">Install it</a>' +
+      ', then press F5 here. <span class="ssb-muted">Tampermonkey stops updating a script ' +
+      'that was installed by hand, so this is how you will hear about new versions.</span></div>';
+  }
+
   function render(root) {
     injectCSS();
     root.className = 'ssb-root';
     root.textContent = '';
+
+    var upd = updNoticeHTML();
+    if (upd) root.insertAdjacentHTML('beforeend', upd);
 
     var sub = root.dataset.sub || '';
     var cmd = COMMANDS[sub];
@@ -1498,6 +1554,8 @@
     _lastScan = info;
     mounted = mounted.filter(function (m) { return m.frame.isConnected; });
   }
+
+  checkUpdate();
 
   function renderAll() {
     mounted = mounted.filter(function (m) { return m.frame.isConnected && m.root.isConnected; });
