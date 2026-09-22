@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SSB — Stoka's Script Buffer
 // @namespace    pu-stokovich
-// @version      3.10
+// @version      3.11
 // @updateURL    https://raw.githubusercontent.com/stokovich/prun-scripts/main/ssb.user.js
 // @downloadURL  https://raw.githubusercontent.com/stokovich/prun-scripts/main/ssb.user.js
 // @description  SSB (Stoka's Script Buffer) - own APEX buffer with subcommands. SSB VZEM: receivables on active contracts. SSB PART: outstanding contract conditions - what partners owe me (money excluded) and what I owe (money included).
@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '3.10';
+  var VERSION = '3.11';
   document.documentElement.dataset.puSsbVersion = VERSION;
   try { console.log('[SSB ' + VERSION + '] loaded on ' + location.host + ' - type SSB.diag() in the console for a status report'); } catch (e) {}
 
@@ -591,7 +591,8 @@
     '.ssb-row.ssb-hid{display:none;}',
     '.ssb-opt{margin-left:auto;color:#8f8f8f;cursor:pointer;user-select:none;white-space:nowrap;}',
     '.ssb-opt:hover{color:#f0a500;}',
-    '.ssb-ffn{color:#5cb85c;font-weight:700;}'
+    '.ssb-ffn{color:#5cb85c;font-weight:700;}',
+    '.ssb-cb{vertical-align:-2px;margin:0 5px 0 0;accent-color:#5cb85c;pointer-events:none;}'
   ].join('\n');
 
   function injectCSS() {
@@ -685,7 +686,8 @@
   function ffToggleHTML() {
     return '<span class="ssb-opt" data-opt="ff-always" ' +
       'title="When on, a row whose FULFILL is enabled stays visible even if its partner group is collapsed">' +
-      (_ffAlways ? '[x]' : '[ ]') + ' FULFILL rows always visible</span>';
+      '<input type="checkbox" class="ssb-cb"' + (_ffAlways ? ' checked' : '') + '>' +
+      'FULFILL rows always visible</span>';
   }
 
   function grpKey(sec, g) { return sec + '|' + (g.key || g.partner); }
@@ -748,7 +750,8 @@
     if (opt) {
       ev.preventDefault(); ev.stopPropagation();
       setFfAlways(!_ffAlways);
-      opt.innerHTML = (_ffAlways ? '[x]' : '[ ]') + ' FULFILL rows always visible';
+      var cb = opt.querySelector('.ssb-cb');
+      if (cb) cb.checked = _ffAlways;
       var rt = opt.closest('.ssb-root');
       if (rt) refreshGroupButtons(rt);
       return;
@@ -1248,7 +1251,7 @@
       gr.setAttribute('data-grp', grpKey(sec, g));
       gr.innerHTML = '<td><span class="ssb-tg">+</span>' + esc(g.partner) + '</td>' +
         '<td>' + n + (n === 1 ? ' condition' : ' conditions') +
-          (nFf ? ' <span class="ssb-ffn">· ' + nFf + ' FULFILL</span>' : '') +
+          (nFf ? ' <span class="ssb-ffn">· ' + nFf + ' FULFILL available</span>' : '') +
           (g.overdue ? ' <span class="ssb-red">· ' + g.overdue + ' overdue</span>' : '') + '</td>' +
         (withMoney ? '<td class="ssb-num">' + (Object.keys(g.totals).length ? esc(fmtTotals(g.totals)) : '') + '</td>' : '') +
         '<td></td>';
