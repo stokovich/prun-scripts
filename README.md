@@ -19,7 +19,7 @@ Updates are automatic: each script carries an `@updateURL`, so Tampermonkey pull
 
 | Script | Version | What it does | Settings |
 |---|---|---|---|
-| [`ssb.user.js`](https://raw.githubusercontent.com/stokovich/prun-scripts/main/ssb.user.js) | 3.9 | Own buffer with reports: `XIT SSB VZEM` (receivables per partner) and `XIT SSB PART` (outstanding contract conditions, with FULFILL buttons) | toggle in the PART header: keep rows with an enabled FULFILL visible inside collapsed groups |
+| [`ssb.user.js`](https://raw.githubusercontent.com/stokovich/prun-scripts/main/ssb.user.js) | 3.10 | Own buffer with reports: `XIT SSB VZEM` (receivables per partner) and `XIT SSB PART` (outstanding contract conditions, with FULFILL buttons) | toggle in the PART header: keep rows with an enabled FULFILL visible inside collapsed groups |
 | [`apex-queue-optimizer.user.js`](https://raw.githubusercontent.com/stokovich/prun-scripts/main/apex-queue-optimizer.user.js) | 1.8 | Production queue optimizer: OPTIMIZER button in XIT PROD, `Ctrl+Shift+O` | - |
 | [`apex-prod-status.user.js`](https://raw.githubusercontent.com/stokovich/prun-scripts/main/apex-prod-status.user.js) | 2.1 | Badge in PROD / XIT PROD: green All OK, or red Check (N) when slots are free | - |
 | [`apex-close-all.user.js`](https://raw.githubusercontent.com/stokovich/prun-scripts/main/apex-close-all.user.js) | 1.0 | Closes all floating buffers: XA button, `XIT XA`, `Ctrl+Shift+X` | - |

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SSB — Stoka's Script Buffer
 // @namespace    pu-stokovich
-// @version      3.9
+// @version      3.10
 // @updateURL    https://raw.githubusercontent.com/stokovich/prun-scripts/main/ssb.user.js
 // @downloadURL  https://raw.githubusercontent.com/stokovich/prun-scripts/main/ssb.user.js
 // @description  SSB (Stoka's Script Buffer) - own APEX buffer with subcommands. SSB VZEM: receivables on active contracts. SSB PART: outstanding contract conditions - what partners owe me (money excluded) and what I owe (money included).
@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '3.9';
+  var VERSION = '3.10';
   document.documentElement.dataset.puSsbVersion = VERSION;
   try { console.log('[SSB ' + VERSION + '] loaded on ' + location.host + ' - type SSB.diag() in the console for a status report'); } catch (e) {}
 
@@ -590,7 +590,8 @@
     '.ssb-all:hover{text-decoration:underline;}',
     '.ssb-row.ssb-hid{display:none;}',
     '.ssb-opt{margin-left:auto;color:#8f8f8f;cursor:pointer;user-select:none;white-space:nowrap;}',
-    '.ssb-opt:hover{color:#f0a500;}'
+    '.ssb-opt:hover{color:#f0a500;}',
+    '.ssb-ffn{color:#5cb85c;font-weight:700;}'
   ].join('\n');
 
   function injectCSS() {
@@ -1237,11 +1238,17 @@
 
     groups.forEach(function (g) {
       var n = g.rows.length;
+      // How many of them can be done right now. The group row carries it so a
+      // collapsed group still says whether there is anything to do inside.
+      var nFf = withMoney
+        ? g.rows.filter(function (r) { return canFulfill(r); }).length
+        : 0;
       var gr = document.createElement('tr');
       gr.className = 'ssb-grp';
       gr.setAttribute('data-grp', grpKey(sec, g));
       gr.innerHTML = '<td><span class="ssb-tg">+</span>' + esc(g.partner) + '</td>' +
         '<td>' + n + (n === 1 ? ' condition' : ' conditions') +
+          (nFf ? ' <span class="ssb-ffn">· ' + nFf + ' FULFILL</span>' : '') +
           (g.overdue ? ' <span class="ssb-red">· ' + g.overdue + ' overdue</span>' : '') + '</td>' +
         (withMoney ? '<td class="ssb-num">' + (Object.keys(g.totals).length ? esc(fmtTotals(g.totals)) : '') + '</td>' : '') +
         '<td></td>';
