@@ -15,16 +15,23 @@ They work the same in Chrome and Firefox.
 Updates are automatic: each script carries an `@updateURL`, so Tampermonkey pulls new versions from this repo
 (Dashboard -> **Check for userscript updates** forces it).
 
+**If an update ever stops reaching you**, the scripts say so themselves: a strip appears at the top of the
+game with the new version and an install link. It shows up only when a version has been published for over a
+day and your copy is still behind, and the × hides it for a day. The usual cause is that the script was
+edited or installed by hand at some point - Tampermonkey then treats it as locally modified and quietly stops
+updating it, while its update check still answers `No update found`. Deleting that entry in the Dashboard and
+installing it again from the link below clears it for good.
+
 ## Scripts
 
 | Script | Version | What it does | Settings |
 |---|---|---|---|
-| [`ssb.user.js`](https://raw.githubusercontent.com/stokovich/prun-scripts/main/ssb.user.js) | 3.11 | Own buffer with reports: `XIT SSB VZEM` (receivables per partner) and `XIT SSB PART` (outstanding contract conditions, with FULFILL buttons) | toggle in the PART header: keep rows with an enabled FULFILL visible inside collapsed groups |
-| [`apex-queue-optimizer.user.js`](https://raw.githubusercontent.com/stokovich/prun-scripts/main/apex-queue-optimizer.user.js) | 1.8 | Production queue optimizer: OPTIMIZER button in XIT PROD, `Ctrl+Shift+O` | - |
-| [`apex-prod-status.user.js`](https://raw.githubusercontent.com/stokovich/prun-scripts/main/apex-prod-status.user.js) | 2.1 | Badge in PROD / XIT PROD: green All OK, or red Check (N) when slots are free | - |
-| [`apex-close-all.user.js`](https://raw.githubusercontent.com/stokovich/prun-scripts/main/apex-close-all.user.js) | 1.0 | Closes all floating buffers: XA button, `XIT XA`, `Ctrl+Shift+X` | - |
-| [`prun-shpt-marquee-select.user.js`](https://raw.githubusercontent.com/stokovich/prun-scripts/main/prun-shpt-marquee-select.user.js) | 2.0.0 | Fixes drag multi-select for SHPT rows in INV / SHPI | - |
-| [`apex-corp-price.user.js`](https://raw.githubusercontent.com/stokovich/prun-scripts/main/apex-corp-price.user.js) | 3.7 | Shows the corp price for both regions, `MOR : 1,234.56 / HUB : 1,300.00`, in place order (CXPO), CX material info (CXM), material (MAT) and order book (CXOB) | - |
+| [`ssb.user.js`](https://raw.githubusercontent.com/stokovich/prun-scripts/main/ssb.user.js) | 3.16 | Own buffer with reports: `XIT SSB VZEM` (receivables per partner) and `XIT SSB PART` (outstanding contract conditions, with FULFILL buttons) | toggle in the PART header: keep rows with an enabled FULFILL visible inside collapsed groups |
+| [`apex-queue-optimizer.user.js`](https://raw.githubusercontent.com/stokovich/prun-scripts/main/apex-queue-optimizer.user.js) | 1.9 | Production queue optimizer: OPTIMIZER button in XIT PROD, `Ctrl+Shift+O` | - |
+| [`apex-prod-status.user.js`](https://raw.githubusercontent.com/stokovich/prun-scripts/main/apex-prod-status.user.js) | 2.2 | Badge in PROD / XIT PROD: green All OK, or red Check (N) when slots are free | - |
+| [`apex-close-all.user.js`](https://raw.githubusercontent.com/stokovich/prun-scripts/main/apex-close-all.user.js) | 1.1 | Closes all floating buffers: XA button, `XIT XA`, `Ctrl+Shift+X` | - |
+| [`prun-shpt-marquee-select.user.js`](https://raw.githubusercontent.com/stokovich/prun-scripts/main/prun-shpt-marquee-select.user.js) | 2.1.0 | Fixes drag multi-select for SHPT rows in INV / SHPI | - |
+| [`apex-corp-price.user.js`](https://raw.githubusercontent.com/stokovich/prun-scripts/main/apex-corp-price.user.js) | 3.8 | Shows the corp price for both regions, `MOR : 1,234.56 / HUB : 1,300.00`, in place order (CXPO), CX material info (CXM), material (MAT) and order book (CXOB) | - |
 
 ## Contract bookmarklet
 

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         APEX Production Queue Optimizer
 // @namespace    pu-stokovich
-// @version      1.8
+// @version      1.9
 // @updateURL    https://raw.githubusercontent.com/stokovich/prun-scripts/main/apex-queue-optimizer.user.js
 // @downloadURL  https://raw.githubusercontent.com/stokovich/prun-scripts/main/apex-queue-optimizer.user.js
 // @description  Pick a planet -> production line -> recipes. Recipe times are taken AUTOMATICALLY from the game (effective, already including efficiency/condition/COGC), nothing is typed by hand. Computes the optimal queue slots (q) and multipliers (m) for the target percentages.
@@ -711,4 +711,127 @@
   }, true);
 
   window.puQueueOptimizer = { open: openModal, lines: getLines };
+})();
+
+
+/* ── Update bar ──────────────────────────────────────────────────
+   A strip at the top of the screen, shared by every script of ours: whichever
+   loads first builds it, the rest add a line to it.
+
+   Why it exists: Tampermonkey stops updating a script once it has been edited or
+   installed by hand, and its update check then simply reports nothing. The marker
+   is not readable from a userscript - verified 22.09.2026: GM_info.scriptWillUpdate
+   is true even for a script edited in Tampermonkey's own editor - so the bar goes
+   by the symptom instead: a newer version has been published for more than GRACE
+   and this copy is still behind. A working auto-update runs daily and takes it
+   long before that, so a healthy install never sees the bar.
+
+   The published file is read at most once every EVERY, the answer is kept in
+   localStorage, and dismissing the line hushes it for a day.
+   ─────────────────────────────────────────────────────────────── */
+(function () {
+  'use strict';
+
+  var NAME = 'Queue Optimizer';
+  var URL = 'https://raw.githubusercontent.com/stokovich/prun-scripts/main/apex-queue-optimizer.user.js';
+  var KEY = 'pu-upd-' + NAME;
+  var EVERY = 6 * 3600 * 1000;
+  var GRACE = 36 * 3600 * 1000;
+  var HUSH = 24 * 3600 * 1000;
+
+  // Our own version, straight from the script manager - no second literal to
+  // forget when the version is bumped. Without it there is nothing to compare.
+  var MINE = (function () {
+    try {
+      if (typeof GM_info !== 'undefined' && GM_info && GM_info.script) return GM_info.script.version || null;
+    } catch (e) {}
+    return null;
+  })();
+  if (!MINE) return;
+
+  var latest = null, firstSeen = 0;
+
+  function cmp(a, b) {
+    var x = String(a).split('.'), y = String(b).split('.');
+    for (var i = 0; i < Math.max(x.length, y.length); i++) {
+      var d = (parseInt(x[i], 10) || 0) - (parseInt(y[i], 10) || 0);
+      if (d) return d < 0 ? -1 : 1;
+    }
+    return 0;
+  }
+
+  function read() {
+    try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { return {}; }
+  }
+  function write(o) {
+    try { localStorage.setItem(KEY, JSON.stringify(o)); } catch (e) {}
+  }
+
+  function bar() {
+    var b = document.getElementById('pu-upd-bar');
+    if (!b) {
+      b = document.createElement('div');
+      b.id = 'pu-upd-bar';
+      b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:2147483000;' +
+        'background:#2b2718;border-bottom:1px solid #6b5d1f;color:#d9c04a;' +
+        'font:12px/1.7 "Roboto Mono",monospace;padding:2px 10px;' +
+        'display:flex;flex-direction:column;';
+      (document.body || document.documentElement).appendChild(b);
+    }
+    return b;
+  }
+
+  function show() {
+    var b = bar();
+    if (b.querySelector('[data-pu-upd="' + NAME + '"]')) return;
+    var row = document.createElement('div');
+    row.setAttribute('data-pu-upd', NAME);
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;';
+    row.innerHTML =
+      '<span><b>' + NAME + ' ' + latest + '</b> is out and you are running ' + MINE +
+      ' - the automatic update is not reaching you.</span>' +
+      '<a href="' + URL + '" target="_blank" rel="noopener" ' +
+      'style="color:#f0a500;text-decoration:underline;">Install it</a>' +
+      '<span style="margin-left:auto;cursor:pointer;padding:0 6px;" title="Hide for a day">\u00d7</span>';
+    row.lastChild.addEventListener('click', function () {
+      var c = read(); c.hush = Date.now(); write(c);
+      row.remove();
+      if (!b.children.length) b.remove();
+    });
+    b.appendChild(row);
+  }
+
+  function maybeShow() {
+    var c = read();
+    if (c.hush && Date.now() - c.hush < HUSH) return;
+    if (!latest || cmp(latest, MINE) <= 0) return;
+    if (!firstSeen || Date.now() - firstSeen < GRACE) return;
+    show();
+  }
+
+  function check() {
+    var c = read();
+    if (c.version) { latest = c.version; firstSeen = c.firstSeen || 0; }
+    maybeShow();
+    if (c.at && Date.now() - c.at < EVERY) return;
+    fetch(URL, { cache: 'no-cache' })
+      .then(function (r) { return r.text(); })
+      .then(function (txt) {
+        var m = txt.match(/^\/\/\s*@version\s+(\S+)/m);
+        if (!m) return;
+        var now = Date.now();
+        // The countdown belongs to THIS version, and a version we have caught up
+        // with clears it, so installing resets everything.
+        if (m[1] !== latest || !firstSeen) firstSeen = now;
+        latest = m[1];
+        if (cmp(latest, MINE) <= 0) firstSeen = 0;
+        c = read();
+        c.at = now; c.version = latest; c.firstSeen = firstSeen;
+        write(c);
+        maybeShow();
+      })
+      .catch(function () {});   // offline or blocked - the bar simply stays away
+  }
+
+  check();
 })();
