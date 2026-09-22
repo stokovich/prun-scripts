@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         APEX Corp Price (CP) — CXPO, CXM, MAT & CXOB
 // @namespace    https://prosperousuniverse.com/
-// @version      3.6
+// @version      3.7
 // @updateURL    https://raw.githubusercontent.com/stokovich/prun-scripts/main/apex-corp-price.user.js
 // @downloadURL  https://raw.githubusercontent.com/stokovich/prun-scripts/main/apex-corp-price.user.js
 // @description  Shows the corp price (CP) for both regions, MOR and HUB, in Place Order (CXPO), CX Material Info (CXM), Material (MAT) and Order Book (CXOB)
@@ -14,7 +14,7 @@
 
   // Version marker for easy diagnostics from the console:
   // document.documentElement.dataset.puCpVersion
-  document.documentElement.dataset.puCpVersion = '3.6';
+  document.documentElement.dataset.puCpVersion = '3.7';
 
   const SHID = '1bK512U_uLjW-BIqCiP4U3X7Q4eTDZhopm9rnUtp4-nI';
   // One entry per region; each is a tab of the export spreadsheet holding
@@ -182,22 +182,30 @@
      Targets: ComExMaterialInfo__header (confirmed via DOM inspection)
      Tile root carries class: rp-command-CXM
   ═══════════════════════════════════════════════════════════════════ */
-  async function handleCXMHeader(header) {
-    if (header.querySelector('#pu-cp-cxm')) return;
+  // The material screens keep the icon, the name and the description in one
+  // flex row, so a widget dropped inside it takes width from the description
+  // and squeezes it into a narrow column. The prices get a row of their own
+  // right under the header instead, where nothing competes with them.
+  function addRowBelowHeader(header, id, ticker) {
+    const parent = header.parentElement;
+    if (!parent || parent.querySelector('#' + id)) return;
 
-    const tile = header.closest('[class*="TileFrame__frame"]');
-    const tileHeader = tile?.querySelector('[class*="TileFrame__header"]');
-    const ticker = tickerFromHeader(tileHeader);
-    if (!ticker) return;
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;justify-content:flex-end;width:100%;padding:2px 0 4px;';
 
-    // Ensure header stretches full width so margin-left:auto pushes widget to the right edge
-    header.style.display = 'flex';
-    header.style.alignItems = 'center';
-    header.style.width = '100%';
+    const { wrap, cells } = makeCPWidget(id);
+    wrap.style.marginLeft = '0';
+    row.appendChild(wrap);
 
-    const { wrap, cells } = makeCPWidget('pu-cp-cxm');
-    header.appendChild(wrap);
+    header.insertAdjacentElement('afterend', row);
     fillCP(cells, ticker);
+  }
+
+  async function handleCXMHeader(header) {
+    const tile = header.closest('[class*="TileFrame__frame"]');
+    const ticker = tickerFromHeader(tile?.querySelector('[class*="TileFrame__header"]'));
+    if (!ticker) return;
+    addRowBelowHeader(header, 'pu-cp-cxm', ticker);
   }
 
   /* ══ HANDLER 3: MAT — Material Info header ══════════════════════════
@@ -205,20 +213,10 @@
      Tile root carries class: rp-command-MAT
   ═══════════════════════════════════════════════════════════════════ */
   async function handleMATHeader(header) {
-    if (header.querySelector('#pu-cp-mat')) return;
-
     const tile = header.closest('[class*="TileFrame__frame"]');
-    const tileHeader = tile?.querySelector('[class*="TileFrame__header"]');
-    const ticker = tickerFromHeader(tileHeader);
+    const ticker = tickerFromHeader(tile?.querySelector('[class*="TileFrame__header"]'));
     if (!ticker) return;
-
-    header.style.display = 'flex';
-    header.style.alignItems = 'center';
-    header.style.width = '100%';
-
-    const { wrap, cells } = makeCPWidget('pu-cp-mat');
-    header.appendChild(wrap);
-    fillCP(cells, ticker);
+    addRowBelowHeader(header, 'pu-cp-mat', ticker);
   }
 
   /* ══ HANDLER 4: CXOB — Order Book tile header ═══════════════════════
