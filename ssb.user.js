@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SSB — Stoka's Script Buffer
 // @namespace    pu-stokovich
-// @version      3.12
+// @version      3.13
 // @updateURL    https://raw.githubusercontent.com/stokovich/prun-scripts/main/ssb.user.js
 // @downloadURL  https://raw.githubusercontent.com/stokovich/prun-scripts/main/ssb.user.js
 // @description  SSB (Stoka's Script Buffer) - own APEX buffer with subcommands. SSB VZEM: receivables on active contracts. SSB PART: outstanding contract conditions - what partners owe me (money excluded) and what I owe (money included).
@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '3.12';
+  var VERSION = '3.13';
   document.documentElement.dataset.puSsbVersion = VERSION;
   try { console.log('[SSB ' + VERSION + '] loaded on ' + location.host + ' - type SSB.diag() in the console for a status report'); } catch (e) {}
 
@@ -1385,6 +1385,20 @@
   var UPD_EVERY = 6 * 3600 * 1000;
   var _latest = null;
 
+  // Tampermonkey answers the question itself: GM_info.scriptWillUpdate is false
+  // exactly when it has given up on this copy (marked as locally modified, or
+  // updates turned off for it). Only then is the notice worth anything - with a
+  // working auto-update it would just be noise. GM_info is available even under
+  // @grant none; another script manager may not provide the field at all, and
+  // then the answer is null and we check anyway rather than stay silent.
+  var _willUpdate = (function () {
+    try {
+      if (typeof GM_info !== 'undefined' && GM_info &&
+          typeof GM_info.scriptWillUpdate === 'boolean') return GM_info.scriptWillUpdate;
+    } catch (e) {}
+    return null;
+  })();
+
   function verCmp(a, b) {
     var x = String(a).split('.'), y = String(b).split('.');
     for (var i = 0; i < Math.max(x.length, y.length); i++) {
@@ -1395,6 +1409,7 @@
   }
 
   function checkUpdate() {
+    if (_willUpdate === true) return;   // Tampermonkey keeps it current by itself
     var c = {};
     try { c = JSON.parse(localStorage.getItem(UPD_KEY) || '{}'); } catch (e) {}
     if (c.version) _latest = c.version;
@@ -1412,6 +1427,7 @@
   }
 
   function updNoticeHTML() {
+    if (_willUpdate === true) return '';
     if (!_latest || verCmp(_latest, VERSION) <= 0) return '';
     return '<div class="ssb-upd">SSB <b>' + esc(_latest) + '</b> is out - you are running ' +
       esc(VERSION) + '. <a href="' + UPD_URL + '" target="_blank" rel="noopener">Install it</a>' +
@@ -1617,6 +1633,8 @@
         version: VERSION,
         url: location.href,
         userAgent: navigator.userAgent,
+        scriptWillUpdate: _willUpdate,
+        latestSeen: _latest,
         refinedPrun: !!document.querySelector('[class*="rp-"], .rp-command-XIT, [class*="rprun"]'),
         lastScan: _lastScan,
         mounted: mounted.length,
