@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SSB — Stoka's Script Buffer
 // @namespace    pu-stokovich
-// @version      3.8
+// @version      3.9
 // @updateURL    https://raw.githubusercontent.com/stokovich/prun-scripts/main/ssb.user.js
 // @downloadURL  https://raw.githubusercontent.com/stokovich/prun-scripts/main/ssb.user.js
 // @description  SSB (Stoka's Script Buffer) - own APEX buffer with subcommands. SSB VZEM: receivables on active contracts. SSB PART: outstanding contract conditions - what partners owe me (money excluded) and what I owe (money included).
@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '3.8';
+  var VERSION = '3.9';
   document.documentElement.dataset.puSsbVersion = VERSION;
   try { console.log('[SSB ' + VERSION + '] loaded on ' + location.host + ' - type SSB.diag() in the console for a status report'); } catch (e) {}
 
@@ -588,7 +588,9 @@
     '.ssb-tg{display:inline-block;width:14px;margin-right:4px;color:#f0a500;font-weight:700;text-align:center;}',
     '.ssb-all{margin-left:10px;color:#f0a500;cursor:pointer;text-transform:none;letter-spacing:0;font-weight:400;}',
     '.ssb-all:hover{text-decoration:underline;}',
-    '.ssb-row.ssb-hid{display:none;}'
+    '.ssb-row.ssb-hid{display:none;}',
+    '.ssb-opt{margin-left:auto;color:#8f8f8f;cursor:pointer;user-select:none;white-space:nowrap;}',
+    '.ssb-opt:hover{color:#f0a500;}'
   ].join('\n');
 
   function injectCSS() {
@@ -666,6 +668,25 @@
   // ─────────────────────────────────────────────────────────────
   var _grpOpen = {};
 
+  // Rows with an enabled FULFILL can be kept out of the collapsing, so that what
+  // can be done right now never hides behind a plus. Several people found that
+  // noisy, so it is a setting - off by default - and it is remembered per browser.
+  var FF_ALWAYS_KEY = 'ssb-ff-always';
+  var _ffAlways = (function () {
+    try { return localStorage.getItem(FF_ALWAYS_KEY) === '1'; } catch (e) { return false; }
+  })();
+
+  function setFfAlways(v) {
+    _ffAlways = !!v;
+    try { localStorage.setItem(FF_ALWAYS_KEY, _ffAlways ? '1' : '0'); } catch (e) {}
+  }
+
+  function ffToggleHTML() {
+    return '<span class="ssb-opt" data-opt="ff-always" ' +
+      'title="When on, a row whose FULFILL is enabled stays visible even if its partner group is collapsed">' +
+      (_ffAlways ? '[x]' : '[ ]') + ' FULFILL rows always visible</span>';
+  }
+
   function grpKey(sec, g) { return sec + '|' + (g.key || g.partner); }
   function isOpen(sec, g) { return !!_grpOpen[grpKey(sec, g)]; }
 
@@ -687,9 +708,10 @@
       gr.title = open ? 'Collapse' : 'Expand';
     });
     [].slice.call(table.querySelectorAll('tr.ssb-row[data-grp]')).forEach(function (tr) {
-      // A row with an enabled FULFILL is always visible, even in a collapsed group:
-      // these are the things that can be done right now and must not hide behind the plus.
-      var hide = !_grpOpen[tr.getAttribute('data-grp')] && !tr.querySelector('.ssb-ff');
+      // With the setting on, a row whose FULFILL is enabled survives the collapse;
+      // with it off the group hides everything, FULFILL or not.
+      var keep = _ffAlways && tr.querySelector('.ssb-ff');
+      var hide = !_grpOpen[tr.getAttribute('data-grp')] && !keep;
       tr.classList.toggle('ssb-hid', hide);
     });
     var root = table.parentElement;
@@ -721,6 +743,15 @@
   document.addEventListener('click', function (ev) {
     var t = ev.target;
     if (!t || !t.closest) return;
+    var opt = t.closest('.ssb-opt[data-opt="ff-always"]');
+    if (opt) {
+      ev.preventDefault(); ev.stopPropagation();
+      setFfAlways(!_ffAlways);
+      opt.innerHTML = (_ffAlways ? '[x]' : '[ ]') + ' FULFILL rows always visible';
+      var rt = opt.closest('.ssb-root');
+      if (rt) refreshGroupButtons(rt);
+      return;
+    }
     var all = t.closest('.ssb-all[data-sec]');
     if (all) {
       ev.preventDefault(); ev.stopPropagation();
@@ -1259,7 +1290,8 @@
     head.className = 'ssb-head';
     head.innerHTML = '<b>' + mine.length + '</b>' +
       '<span class="ssb-sub">conditions I can act on · ' + data.partner.length + ' owed to me</span>' +
-      (pOver + mOver ? '<span class="ssb-red">overdue: ' + (pOver + mOver) + '</span>' : '');
+      (pOver + mOver ? '<span class="ssb-red">overdue: ' + (pOver + mOver) + '</span>' : '') +
+      ffToggleHTML();
     root.appendChild(head);
 
     var mineTotals = {};
