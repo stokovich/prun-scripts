@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         APEX CXPO Corp Price (CP)
 // @namespace    https://prosperousuniverse.com/
-// @version      1.2
+// @version      1.3
 // @updateURL    https://raw.githubusercontent.com/stokovich/prun-scripts/main/cxpo-cp-price.user.js
 // @downloadURL  https://raw.githubusercontent.com/stokovich/prun-scripts/main/cxpo-cp-price.user.js
 // @description  Shows Corp Price (CP) from Google Sheets in the CXPO Place Order form
@@ -13,8 +13,8 @@
 (function () {
   'use strict';
 
-  const SHID = '1Fwy1S4fBs0-MqOzX3fgaILqBHXtXIzbZvaGJONA0uGw';
-  const SHN  = 'DI-CP';
+  const SHID = '1bK512U_uLjW-BIqCiP4U3X7Q4eTDZhopm9rnUtp4-nI';
+  const SHN  = 'MOR';
 
   // Cache CP prices per session to avoid repeated Sheets fetches
   let cpCache = null;
@@ -24,7 +24,7 @@
     if (cpCache) return Promise.resolve(cpCache);
     if (cpFetchPromise) return cpFetchPromise;
 
-    const url = `https://docs.google.com/spreadsheets/d/${SHID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(SHN)}&tq=${encodeURIComponent('SELECT A,J')}`;
+    const url = `https://docs.google.com/spreadsheets/d/${SHID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(SHN)}&tq=${encodeURIComponent('SELECT A,B')}`;
 
     cpFetchPromise = fetch(url)
       .then(r => r.text())
