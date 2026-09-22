@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SSB — Stoka's Script Buffer
 // @namespace    pu-stokovich
-// @version      3.15
+// @version      3.16
 // @updateURL    https://raw.githubusercontent.com/stokovich/prun-scripts/main/ssb.user.js
 // @downloadURL  https://raw.githubusercontent.com/stokovich/prun-scripts/main/ssb.user.js
 // @description  SSB (Stoka's Script Buffer) - own APEX buffer with subcommands. SSB VZEM: receivables on active contracts. SSB PART: outstanding contract conditions - what partners owe me (money excluded) and what I owe (money included).
@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '3.15';
+  var VERSION = '3.16';
   document.documentElement.dataset.puSsbVersion = VERSION;
   try { console.log('[SSB ' + VERSION + '] loaded on ' + location.host + ' - type SSB.diag() in the console for a status report'); } catch (e) {}
 
@@ -592,9 +592,7 @@
     '.ssb-opt{margin-left:auto;color:#8f8f8f;cursor:pointer;user-select:none;white-space:nowrap;}',
     '.ssb-opt:hover{color:#f0a500;}',
     '.ssb-ffn{color:#5cb85c;font-weight:700;}',
-    '.ssb-cb{vertical-align:-2px;margin:0 5px 0 0;accent-color:#5cb85c;pointer-events:none;}',
-    '.ssb-upd{background:#2b2718;border:1px solid #6b5d1f;color:#d9c04a;padding:4px 8px;margin:0 0 6px;line-height:1.5;}',
-    '.ssb-upd a{color:#f0a500;text-decoration:underline;}'
+    '.ssb-cb{vertical-align:-2px;margin:0 5px 0 0;accent-color:#5cb85c;pointer-events:none;}'
   ].join('\n');
 
   function injectCSS() {
@@ -1380,21 +1378,30 @@
   //  The published file is fetched at most once every 6 hours and the answer is
   //  cached in localStorage, so a reload does not hit GitHub again.
   // ───────────────────────────────────────────────────────────
+  //  Update bar (since 3.16)
+  //
+  //  A strip at the top of the screen, shared by every script of ours: whichever
+  //  loads first builds it, the rest add a line. That way scripts without a
+  //  buffer of their own can say the same thing.
+  //
+  //  Why it exists: Tampermonkey stops updating a script once it has been edited
+  //  or installed by hand, and its update check then simply reports nothing. The
+  //  marker is not readable from a userscript - verified 22.09.2026, GM_info
+  //  .scriptWillUpdate is true even for a script edited in Tampermonkey's own
+  //  editor - so the bar goes by the symptom instead: a newer version has been
+  //  published for more than UPD_GRACE and this copy is still behind. A working
+  //  auto-update runs daily and takes it long before that, so a healthy install
+  //  never sees the bar.
+  //
+  //  The published file is read at most once every UPD_EVERY, the answer is kept
+  //  in localStorage, and dismissing the line hushes it for a day.
+  // ───────────────────────────────────────────────────────────
+  var UPD_NAME = 'SSB';
   var UPD_URL = 'https://raw.githubusercontent.com/stokovich/prun-scripts/main/ssb.user.js';
-  var UPD_KEY = 'ssb-upd';
+  var UPD_KEY = 'pu-upd-' + UPD_NAME;
   var UPD_EVERY = 6 * 3600 * 1000;
-  var _latest = null;
-
-  // Only tell people whose updates are actually stuck. Tampermonkey does not
-  // expose its "locally modified" marker: verified 22.09.2026 on a script edited
-  // in its own editor - GM_info.scriptWillUpdate was still true, and
-  // options.check_for_updates is true for those entries as well. So the gate is
-  // the symptom instead of the cause: the buffer remembers when it first saw a
-  // newer published version and speaks up only if that version has been out for
-  // more than UPD_GRACE. A working auto-update runs daily and will have taken it
-  // long before, so those installs never see the notice at all.
   var UPD_GRACE = 36 * 3600 * 1000;
-  var _firstSeen = 0;
+  var UPD_HUSH = 24 * 3600 * 1000;
 
   // Kept for SSB.diag(): it says what Tampermonkey claims, which is not the same
   // as what it does.
@@ -1405,6 +1412,7 @@
     } catch (e) {}
     return null;
   })();
+  var _latest = null, _firstSeen = 0;
 
   function verCmp(a, b) {
     var x = String(a).split('.'), y = String(b).split('.');
@@ -1415,10 +1423,59 @@
     return 0;
   }
 
+  function updRead() {
+    try { return JSON.parse(localStorage.getItem(UPD_KEY) || '{}'); } catch (e) { return {}; }
+  }
+  function updWrite(o) {
+    try { localStorage.setItem(UPD_KEY, JSON.stringify(o)); } catch (e) {}
+  }
+
+  function updBar() {
+    var b = document.getElementById('pu-upd-bar');
+    if (!b) {
+      b = document.createElement('div');
+      b.id = 'pu-upd-bar';
+      b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:2147483000;' +
+        'background:#2b2718;border-bottom:1px solid #6b5d1f;color:#d9c04a;' +
+        'font:12px/1.7 "Roboto Mono",monospace;padding:2px 10px;' +
+        'display:flex;flex-direction:column;';
+      (document.body || document.documentElement).appendChild(b);
+    }
+    return b;
+  }
+
+  function updShow(latest) {
+    var bar = updBar();
+    if (bar.querySelector('[data-pu-upd="' + UPD_NAME + '"]')) return;
+    var row = document.createElement('div');
+    row.setAttribute('data-pu-upd', UPD_NAME);
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;';
+    row.innerHTML =
+      '<span><b>' + UPD_NAME + ' ' + latest + '</b> is out and you are running ' + VERSION +
+      ' - the automatic update is not reaching you.</span>' +
+      '<a href="' + UPD_URL + '" target="_blank" rel="noopener" ' +
+      'style="color:#f0a500;text-decoration:underline;">Install it</a>' +
+      '<span style="margin-left:auto;cursor:pointer;padding:0 6px;" title="Hide for a day">\u00d7</span>';
+    row.lastChild.addEventListener('click', function () {
+      var c = updRead(); c.hush = Date.now(); updWrite(c);
+      row.remove();
+      if (!bar.children.length) bar.remove();
+    });
+    bar.appendChild(row);
+  }
+
+  function updMaybeShow() {
+    var c = updRead();
+    if (c.hush && Date.now() - c.hush < UPD_HUSH) return;
+    if (!_latest || verCmp(_latest, VERSION) <= 0) return;
+    if (!_firstSeen || Date.now() - _firstSeen < UPD_GRACE) return;
+    updShow(_latest);
+  }
+
   function checkUpdate() {
-    var c = {};
-    try { c = JSON.parse(localStorage.getItem(UPD_KEY) || '{}'); } catch (e) {}
+    var c = updRead();
     if (c.version) { _latest = c.version; _firstSeen = c.firstSeen || 0; }
+    updMaybeShow();
     if (c.at && Date.now() - c.at < UPD_EVERY) return;
     fetch(UPD_URL, { cache: 'no-cache' })
       .then(function (r) { return r.text(); })
@@ -1426,36 +1483,23 @@
         var m = txt.match(/^\/\/\s*@version\s+(\S+)/m);
         if (!m) return;
         var now = Date.now();
-        // The clock starts when THIS version is first seen, and a version that
-        // is not newer than ours clears it, so an install resets the countdown.
+        // The countdown belongs to THIS version, and a version we have caught up
+        // with clears it, so installing resets everything.
         if (m[1] !== _latest || !_firstSeen) _firstSeen = now;
         _latest = m[1];
         if (verCmp(_latest, VERSION) <= 0) _firstSeen = 0;
-        try {
-          localStorage.setItem(UPD_KEY, JSON.stringify({ at: now, version: _latest, firstSeen: _firstSeen }));
-        } catch (e) {}
-        if (updNoticeHTML()) renderAll();
+        c = updRead();
+        c.at = now; c.version = _latest; c.firstSeen = _firstSeen;
+        updWrite(c);
+        updMaybeShow();
       })
-      .catch(function () {});   // offline or blocked - the notice simply stays away
-  }
-
-  function updNoticeHTML() {
-    if (!_latest || verCmp(_latest, VERSION) <= 0) return '';
-    if (!_firstSeen || Date.now() - _firstSeen < UPD_GRACE) return '';
-    return '<div class="ssb-upd">SSB <b>' + esc(_latest) + '</b> has been out for over a day and ' +
-      'you are still running ' + esc(VERSION) + ', so the automatic update is not reaching you. ' +
-      '<a href="' + UPD_URL + '" target="_blank" rel="noopener">Install it</a>, then press F5 here. ' +
-      '<span class="ssb-muted">Tampermonkey stops updating a script once it has been edited or ' +
-      'reinstalled by hand, and says nothing about it.</span></div>';
+      .catch(function () {});   // offline or blocked - the bar simply stays away
   }
 
   function render(root) {
     injectCSS();
     root.className = 'ssb-root';
     root.textContent = '';
-
-    var upd = updNoticeHTML();
-    if (upd) root.insertAdjacentHTML('beforeend', upd);
 
     var sub = root.dataset.sub || '';
     var cmd = COMMANDS[sub];
