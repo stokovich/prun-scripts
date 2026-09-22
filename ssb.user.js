@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SSB — Stoka's Script Buffer
 // @namespace    pu-stokovich
-// @version      3.13
+// @version      3.15
 // @updateURL    https://raw.githubusercontent.com/stokovich/prun-scripts/main/ssb.user.js
 // @downloadURL  https://raw.githubusercontent.com/stokovich/prun-scripts/main/ssb.user.js
 // @description  SSB (Stoka's Script Buffer) - own APEX buffer with subcommands. SSB VZEM: receivables on active contracts. SSB PART: outstanding contract conditions - what partners owe me (money excluded) and what I owe (money included).
@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '3.13';
+  var VERSION = '3.15';
   document.documentElement.dataset.puSsbVersion = VERSION;
   try { console.log('[SSB ' + VERSION + '] loaded on ' + location.host + ' - type SSB.diag() in the console for a status report'); } catch (e) {}
 
@@ -1385,12 +1385,19 @@
   var UPD_EVERY = 6 * 3600 * 1000;
   var _latest = null;
 
-  // Tampermonkey answers the question itself: GM_info.scriptWillUpdate is false
-  // exactly when it has given up on this copy (marked as locally modified, or
-  // updates turned off for it). Only then is the notice worth anything - with a
-  // working auto-update it would just be noise. GM_info is available even under
-  // @grant none; another script manager may not provide the field at all, and
-  // then the answer is null and we check anyway rather than stay silent.
+  // Only tell people whose updates are actually stuck. Tampermonkey does not
+  // expose its "locally modified" marker: verified 22.09.2026 on a script edited
+  // in its own editor - GM_info.scriptWillUpdate was still true, and
+  // options.check_for_updates is true for those entries as well. So the gate is
+  // the symptom instead of the cause: the buffer remembers when it first saw a
+  // newer published version and speaks up only if that version has been out for
+  // more than UPD_GRACE. A working auto-update runs daily and will have taken it
+  // long before, so those installs never see the notice at all.
+  var UPD_GRACE = 36 * 3600 * 1000;
+  var _firstSeen = 0;
+
+  // Kept for SSB.diag(): it says what Tampermonkey claims, which is not the same
+  // as what it does.
   var _willUpdate = (function () {
     try {
       if (typeof GM_info !== 'undefined' && GM_info &&
@@ -1409,30 +1416,37 @@
   }
 
   function checkUpdate() {
-    if (_willUpdate === true) return;   // Tampermonkey keeps it current by itself
     var c = {};
     try { c = JSON.parse(localStorage.getItem(UPD_KEY) || '{}'); } catch (e) {}
-    if (c.version) _latest = c.version;
+    if (c.version) { _latest = c.version; _firstSeen = c.firstSeen || 0; }
     if (c.at && Date.now() - c.at < UPD_EVERY) return;
     fetch(UPD_URL, { cache: 'no-cache' })
       .then(function (r) { return r.text(); })
       .then(function (txt) {
         var m = txt.match(/^\/\/\s*@version\s+(\S+)/m);
         if (!m) return;
+        var now = Date.now();
+        // The clock starts when THIS version is first seen, and a version that
+        // is not newer than ours clears it, so an install resets the countdown.
+        if (m[1] !== _latest || !_firstSeen) _firstSeen = now;
         _latest = m[1];
-        try { localStorage.setItem(UPD_KEY, JSON.stringify({ at: Date.now(), version: _latest })); } catch (e) {}
-        if (verCmp(_latest, VERSION) > 0) renderAll();
+        if (verCmp(_latest, VERSION) <= 0) _firstSeen = 0;
+        try {
+          localStorage.setItem(UPD_KEY, JSON.stringify({ at: now, version: _latest, firstSeen: _firstSeen }));
+        } catch (e) {}
+        if (updNoticeHTML()) renderAll();
       })
       .catch(function () {});   // offline or blocked - the notice simply stays away
   }
 
   function updNoticeHTML() {
-    if (_willUpdate === true) return '';
     if (!_latest || verCmp(_latest, VERSION) <= 0) return '';
-    return '<div class="ssb-upd">SSB <b>' + esc(_latest) + '</b> is out - you are running ' +
-      esc(VERSION) + '. <a href="' + UPD_URL + '" target="_blank" rel="noopener">Install it</a>' +
-      ', then press F5 here. <span class="ssb-muted">Tampermonkey stops updating a script ' +
-      'that was installed by hand, so this is how you will hear about new versions.</span></div>';
+    if (!_firstSeen || Date.now() - _firstSeen < UPD_GRACE) return '';
+    return '<div class="ssb-upd">SSB <b>' + esc(_latest) + '</b> has been out for over a day and ' +
+      'you are still running ' + esc(VERSION) + ', so the automatic update is not reaching you. ' +
+      '<a href="' + UPD_URL + '" target="_blank" rel="noopener">Install it</a>, then press F5 here. ' +
+      '<span class="ssb-muted">Tampermonkey stops updating a script once it has been edited or ' +
+      'reinstalled by hand, and says nothing about it.</span></div>';
   }
 
   function render(root) {
@@ -1635,6 +1649,7 @@
         userAgent: navigator.userAgent,
         scriptWillUpdate: _willUpdate,
         latestSeen: _latest,
+        latestFirstSeen: _firstSeen || null,
         refinedPrun: !!document.querySelector('[class*="rp-"], .rp-command-XIT, [class*="rprun"]'),
         lastScan: _lastScan,
         mounted: mounted.length,
