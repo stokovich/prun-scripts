@@ -40,7 +40,7 @@ materials, quantities, corp prices (CP), currency, shipment price, deadlines and
 
 | Page | Version | Browser |
 |---|---|---|
-| [`pu-contract-bookmarklet.html`](https://stokovich.github.io/prun-scripts/pu-contract-bookmarklet.html) | 3.4 | Chrome / Edge |
+| [`pu-contract-bookmarklet.html`](https://stokovich.github.io/prun-scripts/pu-contract-bookmarklet.html) | 3.6 | Chrome / Edge |
 | [`pu-contract-bookmarklet-firefox.html`](https://stokovich.github.io/prun-scripts/pu-contract-bookmarklet-firefox.html) | 3.4 | Firefox |
 
 Open the page for your browser and **drag the golden link onto the bookmarks bar** - the page itself
