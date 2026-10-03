@@ -41,7 +41,7 @@ materials, quantities, corp prices (CP), currency, shipment price, deadlines and
 | Page | Version | Browser |
 |---|---|---|
 | [`pu-contract-bookmarklet.html`](https://stokovich.github.io/prun-scripts/pu-contract-bookmarklet.html) | 3.6 | Chrome / Edge |
-| [`pu-contract-bookmarklet-firefox.html`](https://stokovich.github.io/prun-scripts/pu-contract-bookmarklet-firefox.html) | 3.4 | Firefox |
+| [`pu-contract-bookmarklet-firefox.html`](https://stokovich.github.io/prun-scripts/pu-contract-bookmarklet-firefox.html) | 3.6 | Firefox |
 
 Open the page for your browser and **drag the golden link onto the bookmarks bar** - the page itself
 explains the rest. Firefox needs its own page because it blocks a `javascript:` link dropped from a page;
@@ -51,7 +51,7 @@ Then open the APEX tab, click the bookmark, fill in the list and press **RUN**. 
 every new version - a bookmarklet carries its whole code inside the bookmark and cannot update itself.
 
 **Am I up to date?** The bookmark carries its version in its own name, so the label on your bookmarks bar
-(`PU Contract v3.4`) against the version in the table above answers it at a glance. To be told instead of
+(`PU Contract v3.6`) against the version in the table above answers it at a glance. To be told instead of
 having to look, press **Watch** at the top of this repo and pick **Custom -> Releases**; GitHub then mails
 you when a new version is tagged. That is per person and needs no rights anywhere.
 
