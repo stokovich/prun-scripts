@@ -31,7 +31,7 @@ installing it again from the link below clears it for good.
 | [`apex-prod-status.user.js`](https://raw.githubusercontent.com/stokovich/prun-scripts/main/apex-prod-status.user.js) | 2.2 | Badge in PROD / XIT PROD: green All OK, or red Check (N) when slots are free | - |
 | [`apex-close-all.user.js`](https://raw.githubusercontent.com/stokovich/prun-scripts/main/apex-close-all.user.js) | 1.1 | Closes all floating buffers: XA button, `XIT XA`, `Ctrl+Shift+X` | - |
 | [`prun-shpt-marquee-select.user.js`](https://raw.githubusercontent.com/stokovich/prun-scripts/main/prun-shpt-marquee-select.user.js) | 2.1.0 | Fixes drag multi-select for SHPT rows in INV / SHPI | - |
-| [`apex-corp-price.user.js`](https://raw.githubusercontent.com/stokovich/prun-scripts/main/apex-corp-price.user.js) | 3.8 | Shows the corp price for both regions, `MOR : 1,234.56 / HUB : 1,300.00`, in place order (CXPO), CX material info (CXM), material (MAT) and order book (CXOB) | - |
+| [`apex-corp-price.user.js`](https://raw.githubusercontent.com/stokovich/prun-scripts/main/apex-corp-price.user.js) | 3.9 | Shows the corp price for both regions, `MOR : 1,234.56 / HUB : 1,300.00`, in place order (CXPO), CX material info (CXM), material (MAT) and order book (CXOB) | - |
 
 ## Contract bookmarklet
 
@@ -40,8 +40,8 @@ materials, quantities, corp prices (CP), currency, shipment price, deadlines and
 
 | Page | Version | Browser |
 |---|---|---|
-| [`pu-contract-bookmarklet.html`](https://stokovich.github.io/prun-scripts/pu-contract-bookmarklet.html) | 3.7 | Chrome / Edge |
-| [`pu-contract-bookmarklet-firefox.html`](https://stokovich.github.io/prun-scripts/pu-contract-bookmarklet-firefox.html) | 3.7 | Firefox |
+| [`pu-contract-bookmarklet.html`](https://stokovich.github.io/prun-scripts/pu-contract-bookmarklet.html) | 3.8 | Chrome / Edge |
+| [`pu-contract-bookmarklet-firefox.html`](https://stokovich.github.io/prun-scripts/pu-contract-bookmarklet-firefox.html) | 3.8 | Firefox |
 
 Open the page for your browser and **drag the golden link onto the bookmarks bar** - the page itself
 explains the rest. Firefox needs its own page because it blocks a `javascript:` link dropped from a page;
@@ -51,7 +51,7 @@ Then open the APEX tab, click the bookmark, fill in the list and press **RUN**. 
 every new version - a bookmarklet carries its whole code inside the bookmark and cannot update itself.
 
 **Am I up to date?** The bookmark carries its version in its own name, so the label on your bookmarks bar
-(`PU Contract v3.7`) against the version in the table above answers it at a glance. To be told instead of
+(`PU Contract v3.8`) against the version in the table above answers it at a glance. To be told instead of
 having to look, press **Watch** at the top of this repo and pick **Custom -> Releases**; GitHub then mails
 you when a new version is tagged. That is per person and needs no rights anywhere.
 

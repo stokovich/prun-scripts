@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         APEX Corp Price (CP) — CXPO, CXM, MAT & CXOB
 // @namespace    https://prosperousuniverse.com/
-// @version      3.8
+// @version      3.9
+// @description  Shows the corp price (CP) for both regions, MOR and HUB, in Place Order (CXPO), CX Material Info (CXM), Material (MAT) and Order Book (CXOB)
 // @updateURL    https://raw.githubusercontent.com/stokovich/prun-scripts/main/apex-corp-price.user.js
 // @downloadURL  https://raw.githubusercontent.com/stokovich/prun-scripts/main/apex-corp-price.user.js
-// @description  Shows the corp price (CP) for both regions, MOR and HUB, in Place Order (CXPO), CX Material Info (CXM), Material (MAT) and Order Book (CXOB)
 // @match        https://apex.prosperousuniverse.com/*
 // @grant        none
 // @run-at       document-idle
@@ -14,7 +14,7 @@
 
   // Version marker for easy diagnostics from the console:
   // document.documentElement.dataset.puCpVersion
-  document.documentElement.dataset.puCpVersion = '3.8';
+  document.documentElement.dataset.puCpVersion = '3.9';
 
   const SHID = '1bK512U_uLjW-BIqCiP4U3X7Q4eTDZhopm9rnUtp4-nI';
   // One entry per region; each is a tab of the export spreadsheet holding
@@ -25,43 +25,81 @@
   ];
 
   /* ── CP fetch, all regions, cached per session ───────────────── */
-  let cpCache = null;
-  let cpFetchPromise = null;
 
-  function fetchRegion(sheet) {
-    const url =
-      `https://docs.google.com/spreadsheets/d/${SHID}/gviz/tq?tqx=out:json` +
-      `&sheet=${encodeURIComponent(sheet)}&tq=${encodeURIComponent('SELECT A,B')}`;
-    return fetch(url)
-      .then(r => r.text())
-      .then(text => {
-        const m = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)/);
-        if (!m) return {};
-        const data = JSON.parse(m[1]);
-        const map = {};
-        (data.table?.rows || []).forEach(row => {
-          const ticker = row.c?.[0]?.v;
-          const price  = row.c?.[1]?.v;
-          if (ticker != null && price != null) map[ticker] = price;
-        });
-        return map;
-      })
-      .catch(() => ({}));
+  // A price list counts only if it looks whole. The export tabs are fed by
+  // import formulas that now and then come back empty or cut short; such a
+  // list used to be kept as a success, so every ticker read "-" until F5
+  // (16.11.2026). Same rules and same remembered counts as PU CONTRACT.
+  const CP_MIN_N = 300;        // tickers; the game has ~364 materials
+  const CP_MAX_NULL = 0.02;    // share of tickers with no price
+  const CP_MIN_SHARE = 0.95;   // of the count of the last whole list
+  const CP_N_AGE = 3 * 24 * 3600 * 1000;  // an older remembered count is ignored
+  function cpLastN(src) {
+    try {
+      const o = JSON.parse(localStorage.getItem('pu-cp-n-' + src) || 'null');
+      return o && Date.now() - o.t < CP_N_AGE ? o.n : 0;
+    } catch (e) { return 0; }
+  }
+  function cpSaveN(src, n) {
+    try { localStorage.setItem('pu-cp-n-' + src, JSON.stringify({ n: n, t: Date.now() })); } catch (e) {}
+  }
+  function cpCheck(data, lastN) {
+    // "Loading..." in A1 of the tab (import formula stuck) comes back as
+    // status "error" (NO_COLUMN: B) - seen on HUB, 16.11.2026
+    if (!data || data.status !== 'ok' || !data.table) return { ok: false, err: 'not available (sheet ' + ((data && data.status) || 'no answer') + ')' };
+    const m = {};
+    let n = 0, nul = 0;
+    (data.table.rows || []).forEach(row => {
+      const t = row && row.c && row.c[0] && row.c[0].v;
+      if (t == null || t === '') return;
+      n++;
+      const p = row.c[1] && row.c[1].v;
+      if (p == null) nul++; else m[t] = p;
+    });
+    if (n < CP_MIN_N) return { ok: false, err: 'incomplete (' + n + ' tickers)' };
+    if (nul > n * CP_MAX_NULL) return { ok: false, err: 'incomplete (' + nul + ' of ' + n + ' tickers without price)' };
+    if (lastN && n < lastN * CP_MIN_SHARE) return { ok: false, err: 'incomplete (' + n + ' tickers, last time ' + lastN + ')' };
+    return { ok: true, m: m, n: n };
   }
 
-  // Both regions are fetched in parallel and one failing leaves the other
-  // usable - a missing region shows "-" instead of blanking the whole widget.
+  function fetchRegion(r) {
+    const url =
+      `https://docs.google.com/spreadsheets/d/${SHID}/gviz/tq?tqx=out:json` +
+      `&sheet=${encodeURIComponent(r.sheet)}&tq=${encodeURIComponent('SELECT A,B')}`;
+    return fetch(url)
+      .then(res => res.text())
+      .then(text => {
+        const m = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)/);
+        if (!m) return { ok: false, err: 'not available (no answer)' };
+        const res = cpCheck(JSON.parse(m[1]), cpLastN(r.key));
+        if (res.ok) cpSaveN(r.key, res.n);
+        return res;
+      })
+      .catch(e => ({ ok: false, err: String(e && e.message || e) }));
+  }
+
+  // Each region on its own: a whole list is kept for the session, a failed
+  // one is asked again after CP_RETRY_MS, and one failing leaves the other
+  // usable. On screen: "?" = the region failed, "-" = no such ticker.
+  const CP_RETRY_MS = 60 * 1000;
+  const cpState = {};
+  function regionCP(r) {
+    const s = cpState[r.key];
+    if (s && (s.pending || s.res.ok || Date.now() - s.t < CP_RETRY_MS)) return s.p;
+    const e = { pending: true, t: Date.now() };
+    e.p = fetchRegion(r).then(res => {
+      e.pending = false; e.t = Date.now(); e.res = res;
+      return res;
+    });
+    cpState[r.key] = e;
+    return e.p;
+  }
   function fetchCP() {
-    if (cpCache) return Promise.resolve(cpCache);
-    if (cpFetchPromise) return cpFetchPromise;
-    cpFetchPromise = Promise.all(REGIONS.map(r => fetchRegion(r.sheet)))
-      .then(maps => {
-        const byRegion = {};
-        REGIONS.forEach((r, i) => { byRegion[r.key] = maps[i]; });
-        cpCache = byRegion;
-        return byRegion;
-      });
-    return cpFetchPromise;
+    return Promise.all(REGIONS.map(regionCP)).then(rs => {
+      const byRegion = {};
+      REGIONS.forEach((r, i) => { byRegion[r.key] = rs[i]; });
+      return byRegion;
+    });
   }
 
   function formatCP(price) {
@@ -137,19 +175,36 @@
     return { wrap, cells };
   }
 
-  async function fillCP(cells, ticker) {
+  // A failed region shows "?" and the widget asks again once a minute while
+  // it is on screen (at most CP_TRIES times), so a short outage heals itself.
+  const CP_TRIES = 10;
+  async function fillCP(cells, ticker, tries) {
+    tries = tries || 0;
     const byRegion = await fetchCP();
+    let failed = false;
     for (const r of REGIONS) {
       const el = cells[r.key];
       if (!el) continue;
-      const cp = byRegion[r.key]?.[ticker];
+      const res = byRegion[r.key];
+      const cp = res && res.ok ? res.m[ticker] : null;
       if (cp != null) {
         el.textContent = formatCP(cp);
+        el.title = '';
+        el.style.color = '#c8a44a';
+        el.style.fontWeight = 'bold';
       } else {
-        el.textContent = '-';
+        if (!(res && res.ok)) failed = true;
+        el.textContent = res && res.ok ? '-' : '?';
+        el.title = res && res.ok ? 'not in the ' + r.key + ' price list'
+          : r.key + ' price list ' + ((res && res.err) || 'failed') + ' - asking again in a minute';
         el.style.color = '#6c7086';
         el.style.fontWeight = 'normal';
       }
+    }
+    if (failed && tries + 1 < CP_TRIES) {
+      setTimeout(() => {
+        if (Object.values(cells).some(el => el.isConnected)) fillCP(cells, ticker, tries + 1);
+      }, CP_RETRY_MS + 500);
     }
   }
 
