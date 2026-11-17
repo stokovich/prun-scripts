@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         APEX Production Queue Optimizer
 // @namespace    pu-stokovich
-// @version      1.9
+// @version      2.0
 // @updateURL    https://raw.githubusercontent.com/stokovich/prun-scripts/main/apex-queue-optimizer.user.js
 // @downloadURL  https://raw.githubusercontent.com/stokovich/prun-scripts/main/apex-queue-optimizer.user.js
-// @description  Pick a planet -> production line -> recipes. Recipe times are taken AUTOMATICALLY from the game (effective, already including efficiency/condition/COGC), nothing is typed by hand. Computes the optimal queue slots (q) and multipliers (m) for the target percentages.
+// @description  Pick a planet -> production line -> recipes. Recipe times are taken AUTOMATICALLY from the game (effective, already including efficiency/condition/COGC), nothing is typed by hand. Computes the optimal queue slots (q) and multipliers (m) for the target percentages. In XIT PROD the planets are listed in alphabetical order.
 // @match        https://apex.prosperousuniverse.com/*
 // @run-at       document-idle
 // @grant        none
@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '1.8';
+  var VERSION = '2.0';
   document.documentElement.dataset.puQueueOptimizerVersion = VERSION;
 
   var FRAME_SEL  = '[class*="TileFrame__frame"]';
@@ -644,6 +644,68 @@
     return br.left >= hr.left - 1 && sameRow;
   }
 
+  // ─────────────────────────────────────────────────────────────
+  //  2.0: XIT PROD - the planets in alphabetical order (Stokich, 17.11.2026; Refined PrUn
+  //  lists them by the number of slots, the biggest first)
+  // ─────────────────────────────────────────────────────────────
+  // The table is Vue (Refined PrUn). Every planet is one component with two roots, so Vue keeps
+  // it as a group of sibling nodes: an empty text node (start), the header <tbody>, the <tbody>
+  // of its lines (or the comment of v-if while it is folded), an empty text node (end). The
+  // whole group is moved - Vue finds its anchors again and keeps working; when it re-renders
+  // the table in its own order, the next scan sorts it again. Anything that does not look like
+  // that is left alone.
+  function isPlanetHeader(tb) {
+    if (!tb || tb.nodeType !== 1 || tb.tagName !== 'TBODY' || tb.rows.length !== 1) return false;
+    var c = tb.rows[0].cells[0];
+    return !!c && c.colSpan === 3 && !!c.querySelector('span');
+  }
+  function planetName(tb) {
+    var sp = tb.rows[0].cells[0].querySelectorAll('span');
+    return (sp[sp.length - 1].textContent || '').trim();
+  }
+  function isAnchor(n) { return !!n && n.nodeType === 3 && n.nodeValue === ''; }
+
+  // -> [{name, nodes}] in the current order, or null (not the expected shape - do not touch)
+  function planetGroups(table) {
+    var out = [];
+    for (var n = table.firstChild; n; n = n.nextSibling) {
+      if (!isPlanetHeader(n)) continue;
+      var start = n.previousSibling;
+      if (!isAnchor(start)) return null;
+      var nodes = [start, n], m = n.nextSibling;
+      while (m && !isAnchor(m)) {
+        if (isPlanetHeader(m) || nodes.length > 3) return null;   // at most the lines <tbody> or the comment
+        nodes.push(m);
+        m = m.nextSibling;
+      }
+      if (!m) return null;
+      nodes.push(m);
+      out.push({ name: planetName(n), nodes: nodes });
+      n = m;
+    }
+    return out;
+  }
+
+  function byName(a, b) { return a.name.localeCompare(b.name, 'en', { numeric: true, sensitivity: 'base' }); }
+
+  // returns true if the order was changed
+  function sortPlanets(frame) {
+    var changed = false;
+    frame.querySelectorAll('table').forEach(function (table) {
+      var groups = planetGroups(table);
+      if (!groups || groups.length < 2) return;
+      var sorted = groups.slice().sort(byName);
+      if (sorted.every(function (g, i) { return g === groups[i]; })) return;
+      var last = groups[groups.length - 1].nodes;
+      var ref = last[last.length - 1].nextSibling;   // after the last planet (the end of Vue's list)
+      sorted.forEach(function (g) {
+        g.nodes.forEach(function (x) { table.insertBefore(x, ref); });
+      });
+      changed = true;
+    });
+    return changed;
+  }
+
   function processFrame(frame) {
     var cmd  = cmdText(frame);
     var head = frame.querySelector(HEADER_SEL);
@@ -653,6 +715,8 @@
 
     var match = /^XIT\s+PROD\b/i.exec(cmd);   // only the XIT PROD buffer
     if (!match) { if (btn) btn.remove(); return; }
+
+    sortPlanets(frame);
 
     var idMatch = /\b([0-9a-f]{8,32})\b/i.exec(cmd);
     var lineId = idMatch ? idMatch[1] : null;
@@ -710,7 +774,7 @@
     }
   }, true);
 
-  window.puQueueOptimizer = { open: openModal, lines: getLines };
+  window.puQueueOptimizer = { open: openModal, lines: getLines, sortPlanets: sortPlanets, scan: scanAll, version: VERSION };
 })();
 
 
