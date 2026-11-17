@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SSB — Stoka's Script Buffer
 // @namespace    pu-stokovich
-// @version      3.17
+// @version      3.18
 // @updateURL    https://raw.githubusercontent.com/stokovich/prun-scripts/main/ssb.user.js
 // @downloadURL  https://raw.githubusercontent.com/stokovich/prun-scripts/main/ssb.user.js
 // @description  SSB (Stoka's Script Buffer) - own APEX buffer with subcommands. SSB VZEM: receivables on active contracts. SSB PART: outstanding contract conditions - what partners owe me (money excluded) and what I owe (money included). SSB CALC: sends the contracts to PrUn Calc on this computer (off by default).
@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '3.17';
+  var VERSION = '3.18';
   document.documentElement.dataset.puSsbVersion = VERSION;
   try { console.log('[SSB ' + VERSION + '] loaded on ' + location.host + ' - type SSB.diag() in the console for a status report'); } catch (e) {}
 
@@ -1348,13 +1348,15 @@
   //  Off by default and per browser: nothing is sent until it is switched on in
   //  SSB CALC. When on: after a change in the contracts (5 s later) and every
   //  5 minutes, so the calc knows how fresh they are; after a failure - again
-  //  in 2 minutes.
+  //  in 2 minutes. A send that gets no answer in 20 s counts as a failure (3.18) -
+  //  otherwise one hung request would block every later send until a reload.
   // ─────────────────────────────────────────────────────────────
   var CALC_KEY = 'ssb-calc-send';
   var CALC_URL = 'http://127.0.0.1:8770/api/igra/dogovori';
   var CALC_EVERY = 5 * 60 * 1000;
   var CALC_QUIET = 5000;
   var CALC_RETRY = 2 * 60 * 1000;
+  var CALC_TIMEOUT = 20000;
   var _calcOn = (function () {
     try { return localStorage.getItem(CALC_KEY) === '1'; } catch (e) { return false; }
   })();
@@ -1405,8 +1407,11 @@
     if (!force && sig === _calc.sig && now - _calc.okAt < CALC_EVERY) return false;
     _calc.busy = true;
     var body = JSON.stringify({ ssb: VERSION, sentAt: now, contracts: list });
+    var ctl = (typeof AbortController === 'function') ? new AbortController() : null;
+    var tmo = ctl ? setTimeout(function () { ctl.abort(); }, CALC_TIMEOUT) : null;
     // text/plain keeps it a "simple" request: no CORS preflight
-    fetch(CALC_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: body })
+    fetch(CALC_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: body,
+                      signal: ctl ? ctl.signal : undefined })
       .then(function (r) {
         return r.json().then(function (j) { return { status: r.status, j: j }; },
                              function () { return { status: r.status, j: null }; });
@@ -1421,9 +1426,11 @@
         }
       }, function (e) {
         _calc.failAt = now;
-        _calc.last = { at: now, ok: false, error: 'PrUn Calc is not reachable (' + ((e && e.message) || e) + ')' };
+        _calc.last = { at: now, ok: false, error: (e && e.name === 'AbortError')
+          ? 'PrUn Calc did not answer in ' + (CALC_TIMEOUT / 1000) + ' s'
+          : 'PrUn Calc is not reachable (' + ((e && e.message) || e) + ')' };
       })
-      .then(function () { _calc.busy = false; renderAll(); });
+      .then(function () { if (tmo) clearTimeout(tmo); _calc.busy = false; renderAll(); });
     return true;
   }
 

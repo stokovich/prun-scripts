@@ -26,7 +26,7 @@ installing it again from the link below clears it for good.
 
 | Script | Version | What it does | Settings |
 |---|---|---|---|
-| [`ssb.user.js`](https://raw.githubusercontent.com/stokovich/prun-scripts/main/ssb.user.js) | 3.17 | Own buffer with reports: `XIT SSB VZEM` (receivables per partner), `XIT SSB PART` (outstanding contract conditions, with FULFILL buttons) and `XIT SSB CALC` (sends the contracts to PrUn Calc on the same computer - off by default, only for those who run PrUn Calc) | toggle in the PART header: keep rows with an enabled FULFILL visible inside collapsed groups |
+| [`ssb.user.js`](https://raw.githubusercontent.com/stokovich/prun-scripts/main/ssb.user.js) | 3.18 | Own buffer with reports: `XIT SSB VZEM` (receivables per partner), `XIT SSB PART` (outstanding contract conditions, with FULFILL buttons) and `XIT SSB CALC` (sends the contracts to PrUn Calc on the same computer - off by default, only for those who run PrUn Calc) | toggle in the PART header: keep rows with an enabled FULFILL visible inside collapsed groups |
 | [`apex-queue-optimizer.user.js`](https://raw.githubusercontent.com/stokovich/prun-scripts/main/apex-queue-optimizer.user.js) | 2.0 | Production queue optimizer: OPTIMIZER button in XIT PROD, `Ctrl+Shift+O`; XIT PROD lists the planets in alphabetical order | - |
 | [`apex-prod-status.user.js`](https://raw.githubusercontent.com/stokovich/prun-scripts/main/apex-prod-status.user.js) | 2.2 | Badge in PROD / XIT PROD: green All OK, or red Check (N) when slots are free | - |
 | [`apex-close-all.user.js`](https://raw.githubusercontent.com/stokovich/prun-scripts/main/apex-close-all.user.js) | 1.1 | Closes all floating buffers: XA button, `XIT XA`, `Ctrl+Shift+X` | - |
