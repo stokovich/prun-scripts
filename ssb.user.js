@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         SSB — Stoka's Script Buffer
 // @namespace    pu-stokovich
-// @version      3.16
+// @version      3.17
 // @updateURL    https://raw.githubusercontent.com/stokovich/prun-scripts/main/ssb.user.js
 // @downloadURL  https://raw.githubusercontent.com/stokovich/prun-scripts/main/ssb.user.js
-// @description  SSB (Stoka's Script Buffer) - own APEX buffer with subcommands. SSB VZEM: receivables on active contracts. SSB PART: outstanding contract conditions - what partners owe me (money excluded) and what I owe (money included).
+// @description  SSB (Stoka's Script Buffer) - own APEX buffer with subcommands. SSB VZEM: receivables on active contracts. SSB PART: outstanding contract conditions - what partners owe me (money excluded) and what I owe (money included). SSB CALC: sends the contracts to PrUn Calc on this computer (off by default).
 // @match        https://apex.prosperousuniverse.com/*
 // @run-at       document-idle
 // @grant        none
@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '3.16';
+  var VERSION = '3.17';
   document.documentElement.dataset.puSsbVersion = VERSION;
   try { console.log('[SSB ' + VERSION + '] loaded on ' + location.host + ' - type SSB.diag() in the console for a status report'); } catch (e) {}
 
@@ -1339,6 +1339,137 @@
   // ─────────────────────────────────────────────────────────────
   //  Registry of the subcommands - every new one is added here
   // ─────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────
+  //  Subcommand CALC - the contracts for PrUn Calc (since 3.17)
+  //
+  //  FIO's contract list stops at the latest 100 contracts, so an older live
+  //  contract goes missing there. The game itself holds all of them, and SSB
+  //  hands them to PrUn Calc running on this computer (127.0.0.1:8770).
+  //  Off by default and per browser: nothing is sent until it is switched on in
+  //  SSB CALC. When on: after a change in the contracts (5 s later) and every
+  //  5 minutes, so the calc knows how fresh they are; after a failure - again
+  //  in 2 minutes.
+  // ─────────────────────────────────────────────────────────────
+  var CALC_KEY = 'ssb-calc-send';
+  var CALC_URL = 'http://127.0.0.1:8770/api/igra/dogovori';
+  var CALC_EVERY = 5 * 60 * 1000;
+  var CALC_QUIET = 5000;
+  var CALC_RETRY = 2 * 60 * 1000;
+  var _calcOn = (function () {
+    try { return localStorage.getItem(CALC_KEY) === '1'; } catch (e) { return false; }
+  })();
+  var _calc = { sig: null, okAt: 0, failAt: 0, busy: false, last: null, timer: null };
+
+  function setCalcOn(v) {
+    _calcOn = !!v;
+    try { localStorage.setItem(CALC_KEY, _calcOn ? '1' : '0'); } catch (e) {}
+  }
+
+  function slimDate(d) {
+    return (d && typeof d.timestamp === 'number') ? { timestamp: d.timestamp } : null;
+  }
+
+  function slimAddress(a) {
+    if (!a || !a.lines) return null;
+    return { lines: a.lines.map(function (l) {
+      var e = l && l.entity;
+      return { type: l && l.type, entity: e ? { naturalId: e.naturalId, name: e.name } : null };
+    }) };
+  }
+
+  // Only what the calc reads - the store's contract carries much more
+  function slimContract(c) {
+    return {
+      id: c.id, localId: c.localId, status: c.status, party: c.party,
+      partner: c.partner ? { name: c.partner.name, code: c.partner.code || null } : null,
+      date: slimDate(c.date), dueDate: slimDate(c.dueDate),
+      conditions: (c.conditions || []).map(function (k) {
+        var q = k.quantity;
+        return {
+          id: k.id, index: k.index, type: k.type, party: k.party, status: k.status,
+          quantity: (q && q.material) ? { material: { ticker: q.material.ticker }, amount: q.amount } : null,
+          address: slimAddress(k.address), deadline: slimDate(k.deadline)
+        };
+      })
+    };
+  }
+
+  function calcSend(force) {
+    if (!_calcOn || _calc.busy) return false;
+    var contracts = getContracts();
+    if (contracts === null) return false;              // the store is not loaded yet - never send an empty list for it
+    var now = Date.now();
+    if (!force && now - _calc.failAt < CALC_RETRY) return false;
+    var list = contracts.map(slimContract);
+    var sig = JSON.stringify(list);
+    if (!force && sig === _calc.sig && now - _calc.okAt < CALC_EVERY) return false;
+    _calc.busy = true;
+    var body = JSON.stringify({ ssb: VERSION, sentAt: now, contracts: list });
+    // text/plain keeps it a "simple" request: no CORS preflight
+    fetch(CALC_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: body })
+      .then(function (r) {
+        return r.json().then(function (j) { return { status: r.status, j: j }; },
+                             function () { return { status: r.status, j: null }; });
+      })
+      .then(function (x) {
+        if (x.status === 200 && x.j && x.j.ok) {
+          _calc.sig = sig; _calc.okAt = now; _calc.failAt = 0;
+          _calc.last = { at: now, ok: true, n: x.j.broy };
+        } else {
+          _calc.failAt = now;
+          _calc.last = { at: now, ok: false, error: (x.j && x.j.error) || ('HTTP ' + x.status) };
+        }
+      }, function (e) {
+        _calc.failAt = now;
+        _calc.last = { at: now, ok: false, error: 'PrUn Calc is not reachable (' + ((e && e.message) || e) + ')' };
+      })
+      .then(function () { _calc.busy = false; renderAll(); });
+    return true;
+  }
+
+  // A change in the store: once, CALC_QUIET later (the store changes many times a second)
+  function calcSoon() {
+    if (!_calcOn || _calc.timer) return;
+    _calc.timer = setTimeout(function () { _calc.timer = null; calcSend(false); }, CALC_QUIET);
+  }
+
+  function renderCALC(root) {
+    var contracts = getContracts();
+    var html = '<div class="ssb-head"><b>SSB · CALC</b><span class="ssb-sub">contracts for PrUn Calc on this computer</span></div>';
+    html += '<div class="ssb-sec"><span>Send the contracts</span><span></span></div>';
+    html += '<table class="ssb-table ssb-tight"><tbody>';
+    html += '<tr><td><span class="ssb-opt" data-opt="calc-send" style="margin-left:0" ' +
+      'title="Per browser. While off, nothing is sent anywhere">' +
+      '<input type="checkbox" class="ssb-cb"' + (_calcOn ? ' checked' : '') + '>' +
+      'Send from this browser</span></td>' +
+      '<td>' + (_calcOn ? '<button class="ssb-ff" data-calc="send">Send now</button>' : '') + '</td></tr>';
+    html += '<tr><td class="ssb-muted">Contracts in the game now</td><td class="ssb-num">' +
+      (contracts === null ? '<span class="ssb-red">not loaded yet</span>' : contracts.length) + '</td></tr>';
+    var l = _calc.last;
+    html += '<tr><td class="ssb-muted">Last send</td><td>' + (!l ? '<span class="ssb-muted">-</span>' :
+      new Date(l.at).toLocaleTimeString('bg-BG') + ' · ' +
+      (l.ok ? '<span class="ssb-ready">' + esc(l.n) + ' contracts received</span>'
+            : '<span class="ssb-red">' + esc(l.error) + '</span>')) + '</td></tr>';
+    html += '<tr><td class="ssb-muted">Address</td><td class="ssb-muted">' + esc(CALC_URL) + '</td></tr>';
+    html += '</tbody></table>';
+    html += '<div class="ssb-empty">FIO lists only the latest 100 contracts; the game has all of them. ' +
+      'When on, SSB sends them to PrUn Calc after every change and every 5 minutes while APEX is open. ' +
+      'Chrome may ask once to allow access to devices on the local network - allow it.</div>';
+    root.innerHTML = html;
+  }
+
+  document.addEventListener('click', function (ev) {
+    var t = ev.target;
+    if (!t || !t.closest) return;
+    var opt = t.closest('.ssb-opt[data-opt="calc-send"]');
+    var btn = !opt && t.closest('.ssb-ff[data-calc="send"]');
+    if (!opt && !btn) return;
+    ev.preventDefault(); ev.stopPropagation();
+    if (opt) setCalcOn(!_calcOn);
+    if (_calcOn) calcSend(true);
+    renderAll();
+  }, true);
+
   var COMMANDS = {
     VZEM: {
       title: 'SSB · RECEIVABLES',
@@ -1349,6 +1480,11 @@
       title: 'SSB · CONDITIONS',
       description: 'Outstanding contract conditions — what partners still owe me (money excluded) and what I still owe (money included).',
       render: renderPART
+    },
+    CALC: {
+      title: 'SSB · CALC',
+      description: 'Sends the contracts from the game to PrUn Calc on this computer - all of them, not only the latest 100 of FIO. Off by default.',
+      render: renderCALC
     }
   };
 
@@ -1647,7 +1783,7 @@
   });
 
   scan();
-  setInterval(function () { scan(); renderAll(); }, 30000);
+  setInterval(function () { scan(); renderAll(); calcSend(false); }, 30000);
 
   // Live refresh on store changes
   var unsub = null;
@@ -1657,6 +1793,7 @@
     if (!st || typeof st.subscribe !== 'function') return;
     var t = null;
     unsub = st.subscribe(function () {
+      calcSoon();
       if (t) return;
       t = setTimeout(function () { t = null; renderAll(); }, 1500);
     });
@@ -1672,6 +1809,7 @@
     stock: buildStock,
     storagePaths: function () { return { stores: _storesPath, address: _addrPath }; },
     refresh: function () { scan(); renderAll(); },
+    calc: function () { return { on: _calcOn, url: CALC_URL, last: _calc.last, busy: _calc.busy }; },
   // Report for someone else's install: copy it from the console and send it. Touches nothing.
     diag: function () {
       scan();
